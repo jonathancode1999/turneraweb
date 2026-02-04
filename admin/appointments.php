@@ -242,19 +242,19 @@ admin_nav('appointments');
   <?php if (!$rows): ?>
     <p class="muted">No hay turnos para ese filtro.</p>
   <?php else: ?>
-	    <table class="table">
+	    <table class="table table-stack">
       <thead><tr><th>Hora actual</th><th>Hora solicitada</th><th>Cliente</th><th>Profesional</th><th>Servicio</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody>
       <?php foreach ($rows as $r):
         $dtCurrent = parse_db_datetime((string)$r['start_at']);
         $dtRequested = (!empty($r['requested_start_at'])) ? parse_db_datetime((string)$r['requested_start_at']) : null;
       ?>
-        <tr>
-          <td>
+		<tr>
+		  <td data-label="Hora actual">
             <?php echo h($dtCurrent->format('H:i')); ?>
             <div class="small muted"><?php echo h($dtCurrent->format('d/m')); ?></div>
           </td>
-          <td>
+		  <td data-label="Hora solicitada">
             <?php if ($r['status'] === 'REPROGRAMACION_PENDIENTE' && $dtRequested): ?>
               <?php echo h($dtRequested->format('H:i')); ?>
               <div class="small muted"><?php echo h($dtRequested->format('d/m')); ?></div>
@@ -262,7 +262,7 @@ admin_nav('appointments');
               <span class="muted">—</span>
             <?php endif; ?>
           </td>
-          <td>
+		  <td data-label="Cliente">
             <?php echo h($r['customer_name']); ?>
             <div class="small muted"><?php echo h((string)$r['customer_phone']); ?></div>
             <?php if (trim((string)($r['notes'] ?? '')) !== ''): ?>
@@ -276,26 +276,26 @@ admin_nav('appointments');
               <div class="small"><a href="mailto:<?php echo h($r['customer_email']); ?>">Email</a></div>
             <?php endif; ?>
           </td>
-	          <td>
+	          <td data-label="Profesional">
 	            <?php echo h($r['barber_name']); ?>
 	            <?php if ($r['status'] === 'REPROGRAMACION_PENDIENTE' && !empty($r['requested_barber_name']) && (string)$r['requested_barber_name'] !== (string)$r['barber_name']): ?>
 	              <div class="small muted">Solicitado: <?php echo h($r['requested_barber_name']); ?></div>
 	            <?php endif; ?>
 	          </td>
-	          <td>
+	          <td data-label="Servicio">
 	            <?php echo h($r['service_name']); ?>
 	            <?php if ($r['status'] === 'REPROGRAMACION_PENDIENTE' && !empty($r['requested_service_name']) && (string)$r['requested_service_name'] !== (string)$r['service_name']): ?>
 	              <div class="small muted">Solicitado: <?php echo h($r['requested_service_name']); ?></div>
 	            <?php endif; ?>
 	          </td>
-          <td>
+		  <td data-label="Estado">
             <span class="badge <?php echo h(appt_status_badge_class((string)$r['status'])); ?>"><?php echo h(appt_status_label((string)$r['status'])); ?></span>
             
             <?php if ($r['status'] === 'REPROGRAMACION_PENDIENTE' && $dtRequested): ?>
               <div class="small muted">Hora: <?php echo h($dtCurrent->format('H:i')); ?> → <?php echo h($dtRequested->format('H:i')); ?></div>
             <?php endif; ?>
           </td>
-          <td>
+		  <td data-label="Acciones">
             <form method="post" style="display:flex;gap:8px;align-items:center;">
               <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
               <input type="hidden" name="id" value="<?php echo (int)$r['id']; ?>">

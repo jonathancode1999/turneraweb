@@ -643,17 +643,35 @@ body.admin .pill{background:#2563eb;color:#fff;border-color:#1d4ed8;font-weight:
 /* ==============================
    Analytics mobile fixes
    ============================== */
+/* Analytics grids: default to ONE column (mobile-first).
+   Desktop/tablet progressively enhances to 2 columns.
+   This avoids any "same row on phone" issues caused by viewport quirks. */
 .analytics-grid--finanzas,
 .analytics-grid--turnos{
   display:grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap:12px;
 }
-@media (max-width: 720px){
+
+/* Turn 2-column layout only on larger screens */
+@media (min-width: 980px){
   .analytics-grid--finanzas,
-  .analytics-grid--turnos{grid-template-columns:1fr;}
-  .expense-form{grid-template-columns:1fr !important;}
-  .expense-form [data-span="2"]{grid-column:auto !important;}
+  .analytics-grid--turnos{ grid-template-columns: 1fr 1fr; }
+  .analytics-grid--finanzas .span-2,
+  .analytics-grid--turnos .span-2{ grid-column: span 2; }
+}
+
+/* Forms inside analytics */
+.expense-form{ display:grid; gap:10px; grid-template-columns: 1fr; }
+@media (min-width: 980px){
+  .expense-form{ grid-template-columns: 1fr 1fr; }
+  .expense-form [data-span="2"]{ grid-column: span 2; }
+}
+
+/* Safety: if any inline styles try to span columns, ignore on small screens */
+@media (max-width: 979px){
+  .analytics-grid--finanzas [style*="grid-column"],
+  .analytics-grid--turnos [style*="grid-column"]{ grid-column: auto !important; }
 }
 
 /* ==============================
@@ -693,6 +711,17 @@ body.admin .pill{background:#2563eb;color:#fff;border-color:#1d4ed8;font-weight:
 @media (max-width:720px){.analytics-filters{grid-template-columns:1fr !important;}}
 
 @media (max-width:720px){body.admin .container{padding-bottom:90px;}}
+
+/* Make analytics tables/cards more readable on phones */
+@media (max-width: 720px){
+  .analytics-grid--turnos .card-title,
+  .analytics-grid--finanzas .card-title{ font-size:16px; }
+  .analytics-grid--turnos table.table td,
+  .analytics-grid--turnos table.table th,
+  .analytics-grid--finanzas table.table td,
+  .analytics-grid--finanzas table.table th{ padding:10px 10px; font-size:15px; }
+  .analytics-grid--turnos canvas{ height:200px !important; }
+}
 
 
 /* ===== Mobile polish for lists & analytics ===== */

@@ -286,7 +286,7 @@ if ($tab === 'turnos') {
     }
     echo '</div>';
 
-    echo '<div class="card" style="grid-column: span 2">';
+    echo '<div class="card span-2">';
 	    echo '<div class="card-title">Turnos por horario (heatmap)<button type="button" class="tip-btn" data-tip="Muestra en qué franjas horarias se concentran los turnos. Elegí Semana/Mes/Año.">i</button></div>';
     if ($period === 'day') {
         echo '<div class="muted" style="margin-top:10px">Elegí Semana/Mes/Año para ver el heatmap.</div>';
@@ -517,7 +517,7 @@ echo '<div class="analytics-grid--finanzas" style="margin-top:12px;">';
     echo '</form>';
     echo '</div>';
 
-    echo '<div class="card" style="grid-column: span 2">';
+    echo '<div class="card span-2">';
     echo '<div class="card-title">Gastos ('.$startDate.' → '.date('Y-m-d', strtotime($endDate.' -1 day')).')</div>';
     if (!$expenses) {
         echo '<div class="muted" style="margin-top:10px">Sin gastos cargados en este período.</div>';

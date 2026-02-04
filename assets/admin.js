@@ -17,7 +17,8 @@
   }
   document.addEventListener('click', function(e){
     var t = e.target;
-    if(t && t.id === 'btnMore'){ openSheet(); return; }
+    // Click may land on the icon/label inside the button; use closest().
+    if(t && t.closest && t.closest('#btnMore')){ openSheet(); return; }
     if(t && (t.getAttribute('data-close') === '1')){ closeSheet(); return; }
   });
 
