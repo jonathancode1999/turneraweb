@@ -248,10 +248,10 @@ if ($tab === 'turnos') {
     $topBarbers->execute($params);
     $barbers = $topBarbers->fetchAll(PDO::FETCH_ASSOC);
 
-    echo '<div class="cards-grid" style="margin-top:12px;grid-template-columns: 2fr 1fr;">';
+    echo '<div class="analytics-grid--turnos" style="margin-top:12px;">';
 
     echo '<div class="card">';
-	    echo '<div class="card-title">Turnos por '.$groupLabel.'<span class="tip" title="Cantidad de turnos confirmados en el período seleccionado.">i</span></div>';
+	    echo '<div class="card-title">Turnos por '.$groupLabel.'<button type="button" class="tip-btn" data-tip="Cantidad de turnos confirmados en el período seleccionado.">i</button></div>';
     if ($series) {
         $lbls = array(); $vals = array();
         foreach ($series as $r) { $lbls[] = (string)$r['k']; $vals[] = (int)$r['cnt']; }
@@ -270,7 +270,7 @@ if ($tab === 'turnos') {
     echo '</div>';
 
     echo '<div class="card">';
-	    echo '<div class="card-title">Top servicios<span class="tip" title="Servicios más elegidos (según turnos confirmados en el período).">i</span></div>';
+	    echo '<div class="card-title">Top servicios<button type="button" class="tip-btn" data-tip="Servicios más elegidos (según turnos confirmados en el período).">i</button></div>';
     if ($services) {
         $lbls = array(); $vals = array();
         foreach ($services as $r) { $lbls[] = (string)$r['name']; $vals[] = (int)$r['cnt']; }
@@ -287,7 +287,7 @@ if ($tab === 'turnos') {
     echo '</div>';
 
     echo '<div class="card" style="grid-column: span 2">';
-	    echo '<div class="card-title">Turnos por horario (heatmap)<span class="tip" title="Muestra en qué franjas horarias se concentran los turnos. Elegí Semana/Mes/Año.">i</span></div>';
+	    echo '<div class="card-title">Turnos por horario (heatmap)<button type="button" class="tip-btn" data-tip="Muestra en qué franjas horarias se concentran los turnos. Elegí Semana/Mes/Año.">i</button></div>';
     if ($period === 'day') {
         echo '<div class="muted" style="margin-top:10px">Elegí Semana/Mes/Año para ver el heatmap.</div>';
     } else {
@@ -317,7 +317,7 @@ if ($tab === 'turnos') {
     echo '</div>';
 
     echo '<div class="card">';
-	    echo '<div class="card-title">Top profesionales<span class="tip" title="Profesionales con más turnos confirmados en el período.">i</span></div>';
+	    echo '<div class="card-title">Top profesionales<button type="button" class="tip-btn" data-tip="Profesionales con más turnos confirmados en el período.">i</button></div>';
     if ($barbers) {
         $lbls = array(); $vals = array();
         foreach ($barbers as $r) { $lbls[] = (string)($r['name'] ?: '—'); $vals[] = (int)$r['cnt']; }
@@ -477,10 +477,10 @@ if ($tab === 'turnos') {
     echo '</div>';
     echo '</div>';
 
-echo '<div class="cards-grid" style="margin-top:12px;grid-template-columns: 1fr 1fr;">';
+echo '<div class="analytics-grid--finanzas" style="margin-top:12px;">';
 
     echo '<div class="card">';
-    echo '<div class="card-title">Resumen<span class="tip" title="Ingresos y margen se calculan automáticamente a partir de los turnos confirmados/ocupados del período.">i</span></div>';
+    echo '<div class="card-title">Resumen<button type="button" class="tip-btn" data-tip="Ingresos y margen se calculan automáticamente a partir de los turnos confirmados/ocupados del período.">i</button></div>';
     echo '<div class="kpis">';
 	    echo '<div class="kpi"><div class="kpi-label">Ingresos</div><div class="kpi-value">$ '.number_format($income, 0, ',', '.').'</div></div>';
     echo '<div class="kpi"><div class="kpi-label">Gastos</div><div class="kpi-value">$ '.number_format($expenses_total, 0, ',', '.').'</div></div>';
@@ -491,12 +491,12 @@ echo '<div class="cards-grid" style="margin-top:12px;grid-template-columns: 1fr 
 
     echo '<div class="card">';
     echo '<div class="card-title">Agregar gasto</div>';
-    echo '<form method="post" class="form" style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    echo '<form method="post" class="form expense-form" style="margin-top:10px;display:grid;gap:10px">';
     csrf_field();
     echo '<input type="hidden" name="action" value="add_expense">';
     echo '<div><label>Fecha</label><input type="date" name="expense_date" value="'.h($today).'"></div>';
     echo '<div><label>Categoría</label><input type="text" name="category" placeholder="Alquiler, insumos..." value=""></div>';
-    echo '<div style="grid-column: span 2"><label>Descripción</label><input type="text" name="description" placeholder="Detalle (opcional)"></div>';
+    echo '<div data-span="2"><label>Descripción</label><input type="text" name="description" placeholder="Detalle (opcional)"></div>';
     echo '<div><label>Monto (ARS)</label>';
     echo '<input type="text" name="amount_ars" class="money" inputmode="numeric" placeholder="$ 0" value="">';
     echo '<div class="muted" style="margin-top:4px">Escribí el monto. Se formatea como moneda.</div>';
@@ -530,7 +530,7 @@ echo '<div class="cards-grid" style="margin-top:12px;grid-template-columns: 1fr 
             if ($editId === (int)$e['id']) {
                 echo '<tr>';
                 echo '<td colspan="5">';
-                echo '<form method="post" class="form" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end">';
+                echo '<form method="post" class="form analytics-filters" style="display:grid;gap:10px;align-items:end">';
                 csrf_field();
                 echo '<input type="hidden" name="action" value="update_expense">';
                 echo '<input type="hidden" name="expense_id" value="'.(int)$e['id'].'">';
@@ -592,7 +592,7 @@ echo '<div class="cards-grid" style="margin-top:12px;grid-template-columns: 1fr 
     $months = array_reverse($months);
 
     echo '<div class="card" style="grid-column: span 2">';
-    echo '<div class="card-title">Comparativa mes a mes<span class="tip" title="Comparación de los últimos 6 meses. Ingresos = suma de turnos confirmados/ocupados. Gastos incluye recurrentes mensuales.">i</span></div>';
+    echo '<div class="card-title">Comparativa mes a mes<button type="button" class="tip-btn" data-tip="Comparación de los últimos 6 meses. Ingresos = suma de turnos confirmados/ocupados. Gastos incluye recurrentes mensuales.">i</button></div>';
 	$mLabels = array(); $mIncome = array(); $mExpenses = array(); $mMargin = array();
     echo '<canvas id="chart_fin_months" height="120" style="margin-top:10px"></canvas>';
 	echo '<table class="table" style="margin-top:10px"><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Margen</th></tr>';

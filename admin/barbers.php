@@ -161,12 +161,12 @@ admin_nav('barbers');
   <?php if (!$barbers): ?>
     <div class="notice danger">Se necesita mínimo 1 profesional para poder tomar turnos. Agregá uno arriba.</div>
   <?php else: ?>
-    <table class="table">
+    <table class="table table-stack">
       <thead><tr><th>Nombre</th><th>Activo</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($barbers as $b): ?>
           <tr>
-            <td><div style="display:flex;gap:10px;align-items:center">
+            <td data-label="Profesional"><div style="display:flex;gap:10px;align-items:center">
               <?php
                 $av = trim((string)($b['avatar_path'] ?? ''));
                 $initials = strtoupper(substr(preg_replace('/\s+/', '', (string)$b['name']), 0, 2));
@@ -182,8 +182,8 @@ admin_nav('barbers');
               </div>
               </div>
             </td>
-            <td><?php echo ((int)$b['is_active']===1) ? '<span class="badge ok">Sí</span>' : '<span class="badge danger">No</span>'; ?></td>
-            <td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <td data-label="Activo"><?php echo ((int)$b['is_active']===1) ? '<span class="badge ok">Sí</span>' : '<span class="badge danger">No</span>'; ?></td>
+            <td data-label="Acciones"><div class="row-actions">
               <a class="btn" href="barber_edit.php?id=<?php echo (int)$b['id']; ?>">Editar (Avatar y horarios)</a>
               <form method="post" style="display:inline">
                 <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">

@@ -109,12 +109,12 @@ admin_nav('services');
   <div class="hr"></div>
 
   <h2>Lista</h2>
-  <table class="table">
+  <table class="table table-stack">
     <thead><tr><th>Servicio</th><th>Duración</th><th>Precio</th><th>Activo</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($rows as $r): ?>
       <tr>
-        <td>
+        <td data-label="Servicio">
           <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
             <input type="hidden" name="act" value="update">
@@ -122,12 +122,12 @@ admin_nav('services');
             <input name="name" value="<?php echo h($r['name']); ?>" style="min-width:180px" required>
             <input name="description" value="<?php echo h($r['description'] ?? ''); ?>" style="min-width:260px" placeholder="Descripción">
         </td>
-        <td><input name="duration" type="number" min="<?php echo (int)$slot; ?>" step="<?php echo (int)$slot; ?>" value="<?php echo (int)$r['duration_minutes']; ?>" style="width:110px" required></td>
-        <td><input name="price" type="number" min="0" value="<?php echo (int)($r['price_ars'] ?? 0); ?>" style="width:120px" required></td>
+        <td data-label="Duración"><input name="duration" type="number" min="<?php echo (int)$slot; ?>" step="<?php echo (int)$slot; ?>" value="<?php echo (int)$r['duration_minutes']; ?>" style="width:110px" required></td>
+        <td data-label="Precio"><input name="price" type="number" min="0" value="<?php echo (int)($r['price_ars'] ?? 0); ?>" style="width:120px" required></td>
 	    <?php // Seña deshabilitada: no se muestra ni se edita. ?>
-	    <td><?php echo (int)$r['is_active']===1 ? 'Sí' : 'No'; ?></td>
-        <td>
-            <button class="btn" type="submit">Guardar</button>
+	    <td data-label="Activo"><?php echo (int)$r['is_active']===1 ? 'Sí' : 'No'; ?></td>
+        <td data-label="Acciones">
+            <div class="row-actions"><button class="btn" type="submit">Guardar</button>
           </form>
           <form method="post" style="display:inline">
             <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">

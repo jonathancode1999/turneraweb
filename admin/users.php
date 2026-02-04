@@ -166,36 +166,55 @@ echo '</div>';
 // List users
 echo '<div class="card" style="grid-column: span 2">';
 echo '<div class="card-title">Usuarios</div>';
-echo '<table class="table" style="margin-top:10px"><tr><th>Usuario</th><th>Rol</th><th>Sucursales</th><th>Permisos</th><th>Estado</th><th></th></tr>';
-foreach ($rows as $u) {
-  $uid = (int)$u['id'];
-  $branchesLabel = 'Todas';
-  if (!admin_is_admin() && $uid === (int)($_SESSION['admin_user']['id'] ?? 0)) {
-    // ok
-  }
-  if ((int)$u['all_branches'] === 0) {
-    $st = $pdo->prepare("SELECT b.name FROM user_branch_access uba JOIN branches b ON b.id=uba.branch_id AND b.business_id=uba.business_id WHERE uba.business_id=:bid AND uba.user_id=:uid ORDER BY b.id ASC");
-    $st->execute([':bid'=>$bizId, ':uid'=>$uid]);
-    $names = array_column($st->fetchAll(), 'name');
-    $branchesLabel = $names ? implode(', ', $names) : '—';
-  }
-  $perms = [];
-  foreach (['appointments','barbers','services','hours','blocks','settings','branches','analytics','system'] as $p) {
-    $col = 'can_'.$p;
-    if (!empty($u[$col])) $perms[] = $p;
-  }
-  $permLabel = $perms ? implode(', ', $perms) : '—';
-  echo '<tr><td>'.h($u['username']).'</td><td>'.h($u['role']).'</td><td>'.h($branchesLabel).'</td><td class="muted">'.h($permLabel).'</td><td>'.((int)$u['is_active']?'<span class="badge ok">Activo</span>':'<span class="badge warn">Inactivo</span>').'</td>';
-  echo '<td style="white-space:nowrap">';
-  echo '<a class="btn" href="user_edit.php?id='.$uid.'">Editar</a> ';
-  echo '<form method="post" style="display:inline">';
-  csrf_field();
-  echo '<input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="'.$uid.'">';
-  echo '<button class="btn" type="submit">'.((int)$u['is_active']?'Desactivar':'Activar').'</button>';
-  echo '</form>';
-  echo '</td></tr>';
-}
-echo '</table>';
+?>
+<table class="table table-stack" style="margin-top:10px">
+  <thead>
+    <tr>
+      <th>Usuario</th><th>Rol</th><th>Sucursales</th><th>Permisos</th><th>Estado</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  <?php foreach ($rows as $u):
+    $uid = (int)$u['id'];
+    $branchesLabel = 'Todas';
+    if ((int)$u['all_branches'] === 0) {
+      $st = $pdo->prepare("SELECT b.name FROM user_branch_access uba JOIN branches b ON b.id=uba.branch_id AND b.business_id=uba.business_id WHERE uba.business_id=:bid AND uba.user_id=:uid ORDER BY b.id ASC");
+      $st->execute([':bid'=>$bizId, ':uid'=>$uid]);
+      $names = array_column($st->fetchAll(), 'name');
+      $branchesLabel = $names ? implode(', ', $names) : '—';
+    }
+    $perms = [];
+    foreach (['appointments','barbers','services','hours','blocks','settings','branches','analytics','system'] as $p) {
+      $col = 'can_'.$p;
+      if (!empty($u[$col])) $perms[] = $p;
+    }
+    $permLabel = $perms ? implode(', ', $perms) : '—';
+  ?>
+    <tr>
+      <td data-label="Usuario"><?php echo h($u['username']); ?></td>
+      <td data-label="Rol"><?php echo h($u['role']); ?></td>
+      <td data-label="Sucursales"><?php echo h($branchesLabel); ?></td>
+      <td data-label="Permisos" class="muted"><?php echo h($permLabel); ?></td>
+      <td data-label="Estado"><?php echo ((int)$u['is_active']?'<span class="badge ok">Activo</span>':'<span class="badge danger">Inactivo</span>'); ?></td>
+      <td data-label="Acciones">
+        <div class="row-actions">
+          <a class="btn" href="user_edit.php?id=<?php echo $uid; ?>">Editar</a>
+          <?php if ($uid !== (int)($_SESSION['admin_user']['id'] ?? 0)): ?>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
+              <input type="hidden" name="act" value="toggle">
+              <input type="hidden" name="id" value="<?php echo $uid; ?>">
+              <button class="btn <?php echo ((int)$u['is_active']? 'danger':'ok'); ?>" type="submit"><?php echo ((int)$u['is_active']? 'Desactivar':'Activar'); ?></button>
+            </form>
+          <?php endif; ?>
+        </div>
+      </td>
+    </tr>
+  <?php endforeach; ?>
+  </tbody>
+</table>
+<?php
+
 echo '</div>';
 
 echo '</div>';

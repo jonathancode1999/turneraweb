@@ -55,7 +55,7 @@ admin_nav('hours');
 
   <form method="post">
     <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
-    <table class="table">
+    <table class="table hours-table">
       <thead><tr><th>Día</th><th>Cerrado</th><th>Abre</th><th>Cierra</th></tr></thead>
       <tbody>
         <?php for ($w=0;$w<=6;$w++): $r=$byW[$w]??['is_closed'=>1,'open_time'=>'','close_time'=>'']; ?>

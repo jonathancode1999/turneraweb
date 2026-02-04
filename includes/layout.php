@@ -46,5 +46,9 @@ function page_head(string $title, string $bodyClass = '', ?string $headerHtml = 
 function page_foot(): void {
     $year = (new DateTimeImmutable())->format('Y');
     echo "<footer class=\"footer\">&copy; $year Turnera</footer>";
+    $jsPathFs = __DIR__ . '/../assets/admin.js';
+    $jsVer = is_file($jsPathFs) ? (string)filemtime($jsPathFs) : (string)time();
+    echo "<script src=\"../assets/admin.js?v=" . h($jsVer) . "\"></script>";
     echo "</div></body></html>";
 }
+
