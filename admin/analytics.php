@@ -255,13 +255,13 @@ if ($tab === 'turnos') {
     if ($series) {
         $lbls = array(); $vals = array();
         foreach ($series as $r) { $lbls[] = (string)$r['k']; $vals[] = (int)$r['cnt']; }
-        echo '<canvas id="chart_turnos_period" height="120" style="margin-top:10px"></canvas>';
+	    echo '<canvas id="chart_turnos_period" height="120" class="chart-canvas" style="margin-top:10px"></canvas>';
         echo '<script>window.__ANALYTICS__=window.__ANALYTICS__||{};window.__ANALYTICS__.turnosPeriod='.json_encode(array('labels'=>$lbls,'values'=>$vals)).';</script>';
     }
     if (!$series) {
         echo '<div class="muted" style="margin-top:10px">Sin datos.</div>';
     } else {
-        echo '<table class="table" style="margin-top:10px"><tr><th>'.$groupLabel.'</th><th>Cantidad</th></tr>';
+	        echo '<table class="table analytics-table" style="margin-top:10px"><tr><th>'.$groupLabel.'</th><th>Cantidad</th></tr>';
         foreach ($series as $r) {
             echo '<tr><td>'.h($r['k']).'</td><td><b>'.(int)$r['cnt'].'</b></td></tr>';
         }
@@ -274,13 +274,13 @@ if ($tab === 'turnos') {
     if ($services) {
         $lbls = array(); $vals = array();
         foreach ($services as $r) { $lbls[] = (string)$r['name']; $vals[] = (int)$r['cnt']; }
-        echo '<canvas id="chart_top_services" height="160" style="margin-top:10px"></canvas>';
+	    echo '<canvas id="chart_top_services" height="160" class="chart-canvas" style="margin-top:10px"></canvas>';
         echo '<script>window.__ANALYTICS__=window.__ANALYTICS__||{};window.__ANALYTICS__.topServices='.json_encode(array('labels'=>$lbls,'values'=>$vals)).';</script>';
     }
     if (!$services) {
         echo '<div class="muted" style="margin-top:10px">Sin datos.</div>';
     } else {
-        echo '<table class="table" style="margin-top:10px"><tr><th>Servicio</th><th>Cant.</th></tr>';
+	        echo '<table class="table analytics-table" style="margin-top:10px"><tr><th>Servicio</th><th>Cant.</th></tr>';
         foreach ($services as $r) echo '<tr><td>'.h($r['name']).'</td><td><b>'.(int)$r['cnt'].'</b></td></tr>';
         echo '</table>';
     }
@@ -295,7 +295,7 @@ if ($tab === 'turnos') {
         $max = 0;
         foreach ($heat as $wd=>$hours) foreach ($hours as $hh=>$cnt) { if ($cnt>$max) $max=$cnt; }
         $days = array('Dom','Lun','Mar','Mié','Jue','Vie','Sáb');
-        echo '<div style="overflow:auto;margin-top:10px">';
+	        echo '<div class="heatmap-wrap" style="margin-top:10px">';
         echo '<table class="heatmap"><tr><th>Hora</th>';
         foreach ($days as $d) echo '<th>'.h($d).'</th>';
         echo '</tr>';
@@ -311,7 +311,7 @@ if ($tab === 'turnos') {
             }
             echo '</tr>';
         }
-        echo '</table></div>';
+	        echo '</table></div>';
         echo '<div class="muted" style="margin-top:8px">Cuanto más oscuro, más turnos en esa franja.</div>';
     }
     echo '</div>';
@@ -321,13 +321,13 @@ if ($tab === 'turnos') {
     if ($barbers) {
         $lbls = array(); $vals = array();
         foreach ($barbers as $r) { $lbls[] = (string)($r['name'] ?: '—'); $vals[] = (int)$r['cnt']; }
-        echo '<canvas id="chart_top_barbers" height="180" style="margin-top:10px"></canvas>';
+	        echo '<canvas id="chart_top_barbers" height="180" class="chart-canvas" style="margin-top:10px"></canvas>';
         echo '<script>window.__ANALYTICS__=window.__ANALYTICS__||{};window.__ANALYTICS__.topBarbers='.json_encode(array('labels'=>$lbls,'values'=>$vals)).';</script>';
     }
     if (!$barbers) {
         echo '<div class="muted" style="margin-top:10px">Sin datos.</div>';
     } else {
-        echo '<table class="table" style="margin-top:10px"><tr><th>Profesional</th><th>Cant.</th></tr>';
+	        echo '<table class="table analytics-table" style="margin-top:10px"><tr><th>Profesional</th><th>Cant.</th></tr>';
         foreach ($barbers as $r) echo '<tr><td>'.h($r['name'] ?: '—').'</td><td><b>'.(int)$r['cnt'].'</b></td></tr>';
         echo '</table>';
     }

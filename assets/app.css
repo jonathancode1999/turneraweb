@@ -721,6 +721,40 @@ body.admin .pill{background:#2563eb;color:#fff;border-color:#1d4ed8;font-weight:
   .analytics-grid--finanzas table.table td,
   .analytics-grid--finanzas table.table th{ padding:10px 10px; font-size:15px; }
   .analytics-grid--turnos canvas{ height:200px !important; }
+
+  /* Slightly taller charts on mobile for readability */
+  #chart_turnos_period{ height:200px !important; }
+  #chart_top_services{ height:240px !important; }
+  #chart_top_barbers{ height:260px !important; }
+
+  /* Charts must never overflow the viewport on phones */
+  .analytics-grid--turnos canvas.chart-canvas,
+  .analytics-grid--finanzas canvas.chart-canvas{
+    display:block;
+    width:100% !important;
+    max-width:100% !important;
+  }
+
+  /* Tables in analytics: wrap long names instead of forcing horizontal scroll */
+  .analytics-grid--turnos table.analytics-table,
+  .analytics-grid--finanzas table.analytics-table{
+    width:100% !important;
+    table-layout:fixed;
+  }
+  .analytics-grid--turnos table.analytics-table th,
+  .analytics-grid--turnos table.analytics-table td,
+  .analytics-grid--finanzas table.analytics-table th,
+  .analytics-grid--finanzas table.analytics-table td{
+    white-space:normal !important;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  /* Heatmap: fit to screen (no page-wide sideways pan) */
+  .heatmap-wrap{ overflow:hidden !important; }
+  table.heatmap{ width:100% !important; table-layout:fixed; }
+  table.heatmap th, table.heatmap td{ padding:6px 4px !important; font-size:12px; }
+  table.heatmap .hm-hour{ width:58px; white-space:nowrap; }
 }
 
 
