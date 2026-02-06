@@ -1,0 +1,30 @@
+
+:root{--bg:#f6f7fb;--card:#ffffff;--text:#1a1f2c;--muted:#667085;--border:#e5e7eb;--primary:#2563eb;--danger:#dc2626;}
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);}
+a{color:var(--primary);text-decoration:none} a:hover{text-decoration:underline}
+.container{max-width:1100px;margin:24px auto;padding:0 16px;}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(16,24,40,.06);}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
+.col-6{grid-column:span 6} .col-12{grid-column:span 12} .col-4{grid-column:span 4} .col-8{grid-column:span 8}
+table{width:100%;border-collapse:collapse} th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px}
+th{color:var(--muted);font-weight:600}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:white;font-size:14px}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:600}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:white}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:white}
+.badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
+.badge-off{background:#fff1f2;color:#9f1239;border-color:#fecdd3}
+.badge-on{background:#ecfdf3;color:#027a48;border-color:#abefc6}
+.notice{padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;margin-bottom:12px}
+.notice.err{border-color:#fecaca;background:#fff1f2}
+.notice.ok{border-color:#bbf7d0;background:#f0fdf4}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.tab{padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:white;font-weight:600;font-size:13px}
+.tab.active{background:var(--primary);border-color:var(--primary);color:white}
+.small{font-size:12px;color:var(--muted)}
+
+.btn-row{display:flex;gap:8px;align-items:center;flex-wrap:nowrap}
+.btn-row .btn{white-space:nowrap}
+@media (max-width:900px){.btn-row{flex-wrap:wrap}}
