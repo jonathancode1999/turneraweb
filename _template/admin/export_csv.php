@@ -16,7 +16,7 @@ $pdo = db();
 
 $range = strtolower(trim($_GET['range'] ?? 'day')); // day | week
 $date = trim($_GET['date'] ?? now_tz()->format('Y-m-d'));
-$barberFilter = (int)($_GET['barber_id'] ?? 0);
+$barberFilter = (int)($_GET['professional_id'] ?? 0);
 $statusFilter = trim($_GET['status'] ?? '');
 
 try {
@@ -47,7 +47,7 @@ $params = [
 
 $where = "a.business_id=:bid AND a.branch_id=:brid AND a.start_at >= :s AND a.start_at < :e";
 if ($barberFilter > 0) {
-    $where .= " AND a.barber_id=:bar";
+    $where .= " AND a.professional_id=:bar";
     $params[':bar'] = $barberFilter;
 }
 if ($statusFilter !== '') {
@@ -61,7 +61,7 @@ $st = $pdo->prepare("SELECT a.*,
         br.name AS branch_name
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers b ON b.id=a.barber_id
+    JOIN profesionales b ON b.id=a.professional_id
     JOIN branches br ON br.id=a.branch_id
     WHERE $where
     ORDER BY a.start_at ASC, a.created_at ASC");

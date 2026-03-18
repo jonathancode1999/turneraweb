@@ -22,7 +22,7 @@ $pdo = db();
 
 $view = trim($_GET['view'] ?? 'day'); // 'day' or 'week'
 $date = trim($_GET['date'] ?? now_tz()->format('Y-m-d'));
-$barberFilter = (int)($_GET['barber_id'] ?? 0);
+$barberFilter = (int)($_GET['professional_id'] ?? 0);
 $statusFilter = trim($_GET['status'] ?? '');
 
 try {
@@ -36,9 +36,9 @@ try {
 $prevDate = $curDateObj->modify('-1 day')->format('Y-m-d');
 $nextDate = $curDateObj->modify('+1 day')->format('Y-m-d');
 
-$barbersStmt = $pdo->prepare('SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barbersStmt = $pdo->prepare('SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barbersStmt->execute([':bid' => $bid, ':brid' => $branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 
 $biz = $pdo->prepare('SELECT * FROM businesses WHERE id=:id');
 $biz->execute([':id' => $bid]);
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmtA = $pdo->prepare("SELECT a.*, s.name AS service_name, br.name AS barber_name
         FROM appointments a
         JOIN services s ON s.id=a.service_id
-        JOIN barbers br ON br.id=a.barber_id
+        JOIN profesionales br ON br.id=a.professional_id
         WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id");
     $stmtA->execute([':bid' => $bid, ':brid' => $branchId, ':id' => $id]);
     $a = $stmtA->fetch();
@@ -81,15 +81,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($act === 'approve_reschedule') {
           if (!empty($a['requested_start_at'])) {
             $rs = parse_db_datetime((string)$a['requested_start_at']);
-            $newBarber = (int)($a['requested_barber_id'] ?? $a['barber_id']);
+            $newBarber = (int)($a['requested_professional_id'] ?? $a['professional_id']);
             $newService = (int)($a['requested_service_id'] ?? $a['service_id']);
             [$svc, $newEnd] = assert_slot_available($bid, $branchId, $newBarber, $newService, $rs, (int)$a['id']);
             $pdo->prepare("UPDATE appointments
               SET start_at=:s, end_at=:e,
-                  barber_id=:bar, service_id=:sid,
+                  professional_id=:bar, service_id=:sid,
                   status='ACEPTADO',
                   requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-                  requested_barber_id=NULL, requested_service_id=NULL,
+                  requested_professional_id=NULL, requested_service_id=NULL,
                   updated_at=CURRENT_TIMESTAMP
               WHERE business_id=:bid AND branch_id=:brid AND id=:id")
               ->execute([
@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $pdo->prepare("UPDATE appointments
             SET status='ACEPTADO',
                 requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-                requested_barber_id=NULL, requested_service_id=NULL,
+                requested_professional_id=NULL, requested_service_id=NULL,
                 updated_at=CURRENT_TIMESTAMP
             WHERE business_id=:bid AND branch_id=:brid AND id=:id")
             ->execute([':bid' => $bid, ':brid' => $branchId, ':id' => $id]);
@@ -141,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     }
   }
-  redirect('calendar.php?view=' . urlencode($view) . '&date=' . urlencode($date) . '&status=' . urlencode($statusFilter) . '&barber_id=' . urlencode((string)$barberFilter));
+  redirect('calendar.php?view=' . urlencode($view) . '&date=' . urlencode($date) . '&status=' . urlencode($statusFilter) . '&professional_id=' . urlencode((string)$barberFilter));
 }
 
 // Pull appointments for the day (day view). Week view is optional stub.
@@ -161,7 +161,7 @@ if ($view === 'week') {
 }
 
 if ($barberFilter > 0) {
-  $where .= " AND a.barber_id=:bar";
+  $where .= " AND a.professional_id=:bar";
   $params[':bar'] = $barberFilter;
 }
 if ($statusFilter !== '') {
@@ -173,7 +173,7 @@ $stmt = $pdo->prepare("SELECT a.*,
     s.name AS service_name, b.name AS barber_name
   FROM appointments a
   JOIN services s ON s.id=a.service_id
-  JOIN barbers b ON b.id=a.barber_id
+  JOIN profesionales b ON b.id=a.professional_id
   WHERE $where
   ORDER BY a.start_at ASC, a.created_at ASC");
 $stmt->execute($params);
@@ -284,9 +284,9 @@ admin_nav('calendar');
     <div>
       <h1 style="margin:0">Calendario</h1>
       <div class="muted small" style="margin-top:4px">
-        <a class="link" href="calendar.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($prevDate); ?>&status=<?php echo h(urlencode($statusFilter)); ?>&barber_id=<?php echo h((string)$barberFilter); ?>">← Día anterior</a>
+        <a class="link" href="calendar.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($prevDate); ?>&status=<?php echo h(urlencode($statusFilter)); ?>&professional_id=<?php echo h((string)$barberFilter); ?>">← Día anterior</a>
         <span style="margin:0 8px">·</span>
-        <a class="link" href="calendar.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($nextDate); ?>&status=<?php echo h(urlencode($statusFilter)); ?>&barber_id=<?php echo h((string)$barberFilter); ?>">Día siguiente →</a>
+        <a class="link" href="calendar.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($nextDate); ?>&status=<?php echo h(urlencode($statusFilter)); ?>&professional_id=<?php echo h((string)$barberFilter); ?>">Día siguiente →</a>
       </div>
     </div>
 
@@ -298,9 +298,9 @@ admin_nav('calendar');
       </div>
       <div>
         <label>Profesional</label>
-        <select name="barber_id">
+        <select name="professional_id">
           <option value="0">Todos</option>
-          <?php foreach ($barbers as $b): ?>
+          <?php foreach ($profesionales as $b): ?>
             <option value="<?php echo (int)$b['id']; ?>" <?php echo ((int)$b['id'] === $barberFilter) ? 'selected' : ''; ?>>
               <?php echo h($b['name']); ?>
             </option>
@@ -319,8 +319,8 @@ admin_nav('calendar');
         </select>
       </div>
       <button class="btn">Ver</button>
-      <a class="btn" href="export_csv.php?range=day&date=<?php echo h($date); ?>&barber_id=<?php echo (int)$barberFilter; ?>&status=<?php echo h($statusFilter); ?>">Exportar día (CSV)</a>
-      <a class="btn" href="export_csv.php?range=week&date=<?php echo h($date); ?>&barber_id=<?php echo (int)$barberFilter; ?>&status=<?php echo h($statusFilter); ?>">Exportar semana (CSV)</a>
+      <a class="btn" href="export_csv.php?range=day&date=<?php echo h($date); ?>&professional_id=<?php echo (int)$barberFilter; ?>&status=<?php echo h($statusFilter); ?>">Exportar día (CSV)</a>
+      <a class="btn" href="export_csv.php?range=week&date=<?php echo h($date); ?>&professional_id=<?php echo (int)$barberFilter; ?>&status=<?php echo h($statusFilter); ?>">Exportar semana (CSV)</a>
       <a class="btn primary" href="quick_appointment.php?date=<?php echo h($date); ?>">Crear turno</a>
     </form>
   </div>
@@ -447,7 +447,7 @@ admin_nav('calendar');
                 'phone' => (string)($r['customer_phone'] ?? ''),
                 'email' => (string)($r['customer_email'] ?? ''),
                 'service' => (string)($r['service_name'] ?? ''),
-                'barber' => (string)($r['barber_name'] ?? ''),
+                'profesional' => (string)($r['barber_name'] ?? ''),
                 'status' => $st,
                 'statusLabel' => appt_status_label($st),
                 'notes' => (string)($r['notes'] ?? ''),
@@ -562,7 +562,7 @@ if (count($rows) === 0) {
     q('fId').value = data.id;
 
     q('mTitle').textContent = (data.start || '') + '–' + (data.end || '') + ' · ' + (data.service || '');
-    q('mSub').textContent   = data.barber ? ('Profesional: ' + data.barber) : '';
+    q('mSub').textContent   = data.profesional ? ('Profesional: ' + data.profesional) : '';
     q('mCustomer').textContent = data.customer || '—';
 
     const contact = [];

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/availability.php';
-require_once __DIR__ . '/../includes/service_barbers.php';
+require_once __DIR__ . '/../includes/service_profesionales.php';
 require_once __DIR__ . '/../includes/utils.php';
 require_once __DIR__ . '/../includes/branches.php';
 
@@ -12,7 +12,7 @@ $action = $_GET['action'] ?? '';
 
 try {
     if ($action === 'times') {
-        $barberId = (int)($_GET['barber_id'] ?? 0); // 0 = primer profesional disponible
+        $barberId = (int)($_GET['professional_id'] ?? 0); // 0 = primer profesional disponible
         $serviceId = (int)($_GET['service_id'] ?? 0);
         $date = trim($_GET['date'] ?? '');
         if ($serviceId <= 0 || !$date) json_response(['ok' => false, 'error' => 'Faltan datos'], 400);
@@ -26,7 +26,7 @@ try {
         // barberId=0 => unificar horarios disponibles entre todos los profesionales activos
         if ($barberId === 0) {
             $pdo = db();
-            $stmt = $pdo->prepare("SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id");
+            $stmt = $pdo->prepare("SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id");
             $stmt->execute([':bid' => $bid, ':brid' => $branchId]);
             $pros = $stmt->fetchAll() ?: [];
             if (!empty($allowedIds)) {

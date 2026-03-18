@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/utils.php';
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/availability.php';
-require_once __DIR__ . '/../includes/service_barbers.php';
+require_once __DIR__ . '/../includes/service_profesionales.php';
 require_once __DIR__ . '/../includes/notifications.php';
 require_once __DIR__ . '/../includes/status.php';
 require_once __DIR__ . '/../includes/timeline.php';
@@ -76,7 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
 
     if ($action === 'cancel') {
-        $pdo->beginTransaction();
+        $startedTx = false;
+        if (!$pdo->inTransaction()) {
+            $startedTx = (bool)$pdo->beginTransaction();
+            if (!$startedTx) throw new RuntimeException('No se pudo iniciar la transacción');
+        }
         try {
             $stmt = $pdo->prepare('SELECT * FROM appointments WHERE business_id=:bid AND token=:t');
             $stmt->execute([':bid' => $bid, ':t' => $token]);
@@ -102,24 +106,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
                     FROM appointments a
                     JOIN services s ON s.id=a.service_id
-                    JOIN barbers br ON br.id=a.barber_id
+                    JOIN profesionales br ON br.id=a.professional_id
                     WHERE a.id=:id');
                 $stmtN->execute(array(':id' => (int)$a['id']));
                 $full = $stmtN->fetch();
                 if ($full) notify_event('booking_cancelled', $biz, $full);
             }
-            $pdo->commit();
+            if (!empty($startedTx) && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
 
             // Redirect to avoid re-submitting on refresh
             redirect('manage.php?token=' . urlencode((string)$token) . '&msg=cancel_ok');
         } catch (Throwable $e) {
-            $pdo->rollBack();
+            if (!empty($startedTx) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $error = $e->getMessage();
         }
     }
 
     if ($action === 'reschedule') {
-        $pdo->beginTransaction();
+        $startedTx = false;
+        if (!$pdo->inTransaction()) {
+            $startedTx = (bool)$pdo->beginTransaction();
+            if (!$startedTx) throw new RuntimeException('No se pudo iniciar la transacción');
+        }
         try {
             $stmt = $pdo->prepare('SELECT * FROM appointments WHERE business_id=:bid AND token=:t');
             $stmt->execute([':bid' => $bid, ':t' => $token]);
@@ -138,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $biz = get_business($bid);
             enforce_customer_change_window($biz, $a);
 
-            $newBarberId = (int)($_POST['new_barber_id'] ?? 0);
+            $newBarberId = (int)($_POST['new_professional_id'] ?? 0);
             $newServiceId = (int)($_POST['new_service_id'] ?? 0);
             if ($newServiceId <= 0) $newServiceId = (int)$a['service_id'];
             $newDate = trim($_POST['new_date'] ?? '');
@@ -159,7 +171,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               requested_start_at=:rs,
                               requested_end_at=:re,
                               requested_at=CURRENT_TIMESTAMP,
-                              requested_barber_id=:rb,
+                              requested_professional_id=:rb,
                               requested_service_id=:rsvc,
                               updated_at=CURRENT_TIMESTAMP
                           WHERE id=:id")
@@ -174,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 appt_log_event($bid, $branchId, (int)$a['id'], 'reschedule_requested', 'El cliente solicitó reprogramación', [
                     'requested_start_at' => $start->format('Y-m-d H:i:s'),
-                    'requested_barber_id' => $newBarberId,
+                    'requested_professional_id' => $newBarberId,
                     'requested_service_id' => $newServiceId,
                 ], 'customer');
             } catch (Throwable $e) {
@@ -187,18 +199,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
                 FROM appointments a
                 JOIN services s ON s.id=a.service_id
-                JOIN barbers br ON br.id=a.barber_id
+                JOIN profesionales br ON br.id=a.professional_id
                 WHERE a.id=:id');
             $stmtN->execute(array(':id' => (int)$a['id']));
             $full = $stmtN->fetch();
             if ($full) notify_event('reschedule_requested', $biz, $full);
 
-            $pdo->commit();
+            if (!empty($startedTx) && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
 
             // Redirect to avoid re-submitting on refresh
             redirect('manage.php?token=' . urlencode((string)$token) . '&msg=resched_sent');
         } catch (Throwable $e) {
-            $pdo->rollBack();
+            if (!empty($startedTx) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $error = $e->getMessage();
         }
     }
@@ -216,9 +232,9 @@ $stmt = $pdo->prepare('SELECT a.*,
         b.customer_choose_barber, b.slot_minutes
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers br ON br.id=a.barber_id
+    JOIN profesionales br ON br.id=a.professional_id
     LEFT JOIN services rs ON rs.id=a.requested_service_id
-    LEFT JOIN barbers rbr ON rbr.id=a.requested_barber_id
+    LEFT JOIN profesionales rbr ON rbr.id=a.requested_professional_id
     JOIN businesses b ON b.id=a.business_id
     WHERE a.business_id=:bid AND a.token=:t');
 $stmt->execute([':bid' => $bid, ':t' => $token]);
@@ -242,7 +258,7 @@ $badge = status_badge_class($status);
 
 // Lists for reschedule UI
 $services = $pdo->query("SELECT id, name, description, duration_minutes, price_ars, is_active, image_url FROM services WHERE business_id=" . (int)$bid . " AND is_active=1 ORDER BY id")->fetchAll() ?: [];
-$barbers = $pdo->query("SELECT id, name, is_active FROM barbers WHERE business_id=" . (int)$bid . " AND is_active=1 ORDER BY id")->fetchAll() ?: [];
+$profesionales = $pdo->query("SELECT id, name, is_active FROM profesionales WHERE business_id=" . (int)$bid . " AND is_active=1 ORDER BY id")->fetchAll() ?: [];
 
 // WhatsApp link
 $wa = preg_replace('/\D+/', '', (string)($a['business_whatsapp'] ?? ''));
@@ -304,7 +320,16 @@ page_head('Gestionar turno', 'public-light');
       </div>
     <?php endif; ?>
 
-    <?php if ($status === 'ACEPTADO'): ?>
+    <?php if ($status === 'PENDIENTE_PAGO'): ?>
+      <div class="notice warn" style="margin-top:10px">
+        <b>Pendiente de pago:</b> reservamos tu turno por 15 minutos. Si no pagás, se vence automáticamente.
+      </div>
+      <div style="margin-top:12px">
+        <a class="btn primary" href="pay.php?token=<?php echo urlencode($token); ?>" target="_blank" rel="noopener">Pagar con MercadoPago</a>
+      </div>
+    <?php endif; ?>
+
+<?php if ($status === 'ACEPTADO'): ?>
       <div class="notice ok">Tu turno está <b>CONFIRMADO</b>. Si necesitás cambiarlo, podés solicitar reprogramación abajo.</div>
     <?php endif; ?>
 
@@ -325,13 +350,13 @@ page_head('Gestionar turno', 'public-light');
       </form>
     <?php endif; ?>
 
-    <?php if (in_array($status, ['PENDIENTE_APROBACION','ACEPTADO'], true) && count($services) > 0 && count($barbers) > 0): ?>
+    <?php if (in_array($status, ['PENDIENTE_APROBACION','ACEPTADO'], true) && count($services) > 0 && count($profesionales) > 0): ?>
       <div class="spacer"></div>
       <div class="section-title">Solicitar reprogramación</div>
 
       <form method="post" id="rsForm">
         <input type="hidden" name="action" value="reschedule">
-        <input type="hidden" name="new_barber_id" id="rs_barber_id" value="0">
+        <input type="hidden" name="new_professional_id" id="rs_professional_id" value="0">
         <input type="hidden" name="new_service_id" id="rs_service_id" value="">
         <input type="hidden" name="new_date" id="rs_date" value="">
         <input type="hidden" name="new_time" id="rs_time" value="">
@@ -355,7 +380,7 @@ page_head('Gestionar turno', 'public-light');
             <h3 class="h3">Elegí profesional</h3>
             <div class="pro-pills" id="rsProPills">
               <div class="pro-pill selected" tabindex="0" data-id="0">Primer profesional disponible</div>
-              <?php foreach ($barbers as $br): ?>
+              <?php foreach ($profesionales as $br): ?>
                 <div class="pro-pill" tabindex="0" data-id="<?php echo (int)$br['id']; ?>"><?php echo h($br['name']); ?></div>
               <?php endforeach; ?>
             </div>
@@ -382,7 +407,7 @@ page_head('Gestionar turno', 'public-light');
 </div>
 
 <?php
-  // Ensure branchId is defined for service->professionals mapping
+  // Ensure branchId is defined for service->profesionales mapping
   if (!isset($branchId) || (int)$branchId <= 0) {
     $branchId = (int)($a['branch_id'] ?? ($appt['branch_id'] ?? 1));
     if ($branchId <= 0) $branchId = 1;
@@ -402,7 +427,7 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
 
   const proPills = document.getElementById('rsProPills');
   const servicesRoot = document.getElementById('rsServices');
-  const barberInput = document.getElementById('rs_barber_id');
+  const barberInput = document.getElementById('rs_professional_id');
   const serviceInput = document.getElementById('rs_service_id');
 
   function updateProsForService(sid){
@@ -499,7 +524,7 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
     }
 
     try{
-      const res = await fetch(`api.php?action=times&barber_id=${encodeURIComponent(bid)}&service_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(d)}`);
+      const res = await fetch(`api.php?action=times&professional_id=${encodeURIComponent(bid)}&service_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(d)}`);
       const data = await res.json();
       if(!data.ok){
         timesHelp.textContent = data.error || 'Sin horarios.';

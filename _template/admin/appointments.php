@@ -28,11 +28,11 @@ $biz = $pdo->query("SELECT * FROM businesses WHERE id=" . (int)$bid)->fetch();
 $view = trim($_GET['view'] ?? 'day'); // 'day' or 'all'
 $date = trim($_GET['date'] ?? now_tz()->format('Y-m-d'));
 $status = trim($_GET['status'] ?? '');
-$barberFilter = (int)($_GET['barber_id'] ?? 0);
+$barberFilter = (int)($_GET['professional_id'] ?? 0);
 
-$barbersStmt = $pdo->prepare('SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barbersStmt = $pdo->prepare('SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barbersStmt->execute([':bid' => $bid, ':brid' => $branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 
 $autoWaUrl = '';
 
@@ -47,7 +47,7 @@ if ($id > 0) {
         $stmtA = $pdo->prepare("SELECT a.*, s.name AS service_name, br.name AS barber_name
             FROM appointments a
             JOIN services s ON s.id=a.service_id
-            JOIN barbers br ON br.id=a.barber_id
+            JOIN profesionales br ON br.id=a.professional_id
             WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id");
         $stmtA->execute([':bid' => $bid, ':brid' => $branchId, ':id' => $id]);
         $a = $stmtA->fetch();
@@ -72,16 +72,16 @@ if ($id > 0) {
 	                    try {
 	                        // Parse using business timezone to avoid "past" false positives when server TZ != business TZ.
 	                        $rs = parse_db_datetime((string)$a['requested_start_at']);
-	                        $newBarber = (int)($a['requested_barber_id'] ?? $a['barber_id']);
+	                        $newBarber = (int)($a['requested_professional_id'] ?? $a['professional_id']);
 	                        $newService = (int)($a['requested_service_id'] ?? $a['service_id']);
 	                        // Validate again at approval time (ignore this same appointment)
                         [$svc, $newEnd] = assert_slot_available($bid, $branchId, $newBarber, $newService, $rs, (int)$a['id']);
 	                        $pdo->prepare("UPDATE appointments
 	                                      SET start_at=:s, end_at=:e,
-	                                          barber_id=:bar, service_id=:sid,
+	                                          professional_id=:bar, service_id=:sid,
 	                                          status='ACEPTADO',
 	                                          requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-	                                          requested_barber_id=NULL, requested_service_id=NULL,
+	                                          requested_professional_id=NULL, requested_service_id=NULL,
 	                                          updated_at=CURRENT_TIMESTAMP
                                       WHERE business_id=:bid AND branch_id=:brid AND id=:id")
 	                            ->execute([
@@ -102,7 +102,7 @@ if ($id > 0) {
                 $pdo->prepare("UPDATE appointments
                               SET status='ACEPTADO',
                                   requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-                                  requested_barber_id=NULL, requested_service_id=NULL,
+                                  requested_professional_id=NULL, requested_service_id=NULL,
                                   updated_at=CURRENT_TIMESTAMP
                               WHERE business_id=:bid AND branch_id=:brid AND id=:id")
                     ->execute([':bid' => $bid, ':brid' => $branchId, ':id' => $id]);
@@ -126,7 +126,7 @@ if ($id > 0) {
                     } elseif ($act === 'approve_reschedule') {
                         appt_log_event($bid, $branchId, (int)$id, 'reschedule_approved', 'Reprogramación aprobada', [
                             'new_start_at' => (string)($a2['start_at'] ?? ''),
-                            'new_barber_id' => (int)($a2['barber_id'] ?? 0),
+                            'new_professional_id' => (int)($a2['professional_id'] ?? 0),
                             'new_service_id' => (int)($a2['service_id'] ?? 0),
                         ], 'admin', $uid);
                     } elseif ($act === 'reject_reschedule') {
@@ -151,7 +151,7 @@ if ($id > 0) {
             }
         }
     }
-	    redirect('appointments.php?view=' . urlencode($view) . '&date=' . urlencode($date) . '&status=' . urlencode($status) . '&barber_id=' . urlencode((string)$barberFilter));
+	    redirect('appointments.php?view=' . urlencode($view) . '&date=' . urlencode($date) . '&status=' . urlencode($status) . '&professional_id=' . urlencode((string)$barberFilter));
 }
 
 // Prev/Next day navigation helpers
@@ -177,7 +177,7 @@ if ($status) {
 }
 
 if ($barberFilter > 0) {
-    $where .= " AND a.barber_id=:bar";
+    $where .= " AND a.professional_id=:bar";
     $params[':bar'] = $barberFilter;
 }
 
@@ -187,9 +187,9 @@ $stmt = $pdo->prepare("SELECT a.*,
         rb.name AS requested_barber_name
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers b ON b.id=a.barber_id
+    JOIN profesionales b ON b.id=a.professional_id
     LEFT JOIN services rs ON rs.id=a.requested_service_id
-    LEFT JOIN barbers rb ON rb.id=a.requested_barber_id
+    LEFT JOIN profesionales rb ON rb.id=a.requested_professional_id
     WHERE $where
     ORDER BY a.start_at ASC");
 $stmt->execute($params);
@@ -211,9 +211,9 @@ admin_nav('appointments');
     <div>
       <h1 style="margin:0">Turnos</h1>
       <div class="muted small" style="margin-top:4px">
-        <a class="link" href="appointments.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($prevDate); ?>&status=<?php echo h(urlencode($status)); ?>&barber_id=<?php echo h((string)$barberFilter); ?>">← Día anterior</a>
+        <a class="link" href="appointments.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($prevDate); ?>&status=<?php echo h(urlencode($status)); ?>&professional_id=<?php echo h((string)$barberFilter); ?>">← Día anterior</a>
         <span style="margin:0 8px">·</span>
-        <a class="link" href="appointments.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($nextDate); ?>&status=<?php echo h(urlencode($status)); ?>&barber_id=<?php echo h((string)$barberFilter); ?>">Día siguiente →</a>
+        <a class="link" href="appointments.php?view=<?php echo h(urlencode($view)); ?>&date=<?php echo h($nextDate); ?>&status=<?php echo h(urlencode($status)); ?>&professional_id=<?php echo h((string)$barberFilter); ?>">Día siguiente →</a>
       </div>
     </div>
     <a class="btn primary" href="quick_appointment.php?date=<?php echo h($date); ?>">Crear turno rápido</a>
@@ -232,9 +232,9 @@ admin_nav('appointments');
     </div>
     <div>
 	      <label>Profesional</label>
-	      <select name="barber_id">
+	      <select name="professional_id">
 	        <option value="0">Todos</option>
-	        <?php foreach ($barbers as $b): $id=(int)$b['id']; ?>
+	        <?php foreach ($profesionales as $b): $id=(int)$b['id']; ?>
 	          <option value="<?php echo $id; ?>" <?php echo $barberFilter===$id?'selected':''; ?>><?php echo h($b['name']); ?></option>
 	        <?php endforeach; ?>
 	      </select>

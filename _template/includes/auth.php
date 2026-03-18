@@ -56,7 +56,7 @@ function admin_require_login(): void {
             'branches' => (int)($u['can_branches'] ?? 0),
             'settings' => (int)($u['can_settings'] ?? 0),
             'appointments' => (int)($u['can_appointments'] ?? 1),
-            'barbers' => (int)($u['can_barbers'] ?? 0),
+            'profesionales' => (int)($u['can_barbers'] ?? 0),
             'services' => (int)($u['can_services'] ?? 0),
             'hours' => (int)($u['can_hours'] ?? 0),
             'blocks' => (int)($u['can_blocks'] ?? 0),
@@ -107,6 +107,20 @@ function admin_require_permission(string $permKey): void {
         exit;
     }
 }
+
+// -----------------------------------------------------------------------------
+// Compatibility aliases (older admin pages)
+// -----------------------------------------------------------------------------
+// Some older client pages may still call these helpers. Keep thin wrappers so
+// we don't 500 on renamed/legacy scripts.
+function require_admin(): void {
+    admin_require_login();
+}
+
+function require_login(): void {
+    admin_require_login();
+}
+
 
 function admin_allowed_branch_ids(): array {
     $cfg = app_config();

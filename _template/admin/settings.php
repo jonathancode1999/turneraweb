@@ -11,16 +11,13 @@ require_once __DIR__ . '/../includes/availability.php';
 
 
 function ensure_whatsapp_branch_columns(PDO $pdo): void {
-  $cols = $pdo->query("PRAGMA table_info(branches)")->fetchAll(PDO::FETCH_ASSOC);
-  $have = [];
-  foreach ($cols as $c) { $have[$c['name']] = true; }
-  if (!isset($have['whatsapp_reminder_enabled'])) {
-    $pdo->exec("ALTER TABLE branches ADD COLUMN whatsapp_reminder_enabled INTEGER NOT NULL DEFAULT 0");
+  if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
+    // MySQL schema already contains these columns
+    return;
   }
-  if (!isset($have['whatsapp_reminder_minutes'])) {
-    $pdo->exec("ALTER TABLE branches ADD COLUMN whatsapp_reminder_minutes INTEGER NOT NULL DEFAULT 1440");
-  }
+  // SQLite legacy: columns are added in includes/db.php migration helpers.
 }
+
 
 admin_require_login();
 admin_require_permission('settings');
@@ -90,6 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($reminderMinutes, [0,120,1440], true)) $reminderMinutes = 0;
     // public_base_url: oculto en UI (se puede reactivar si se necesita)
 
+    // Payments (MercadoPago): OFF / DEPOSIT / FULL
+    $paymentMode = strtoupper(trim((string)($_POST['payment_mode'] ?? ($bizBefore['payment_mode'] ?? 'OFF'))));
+    if (!in_array($paymentMode, ['OFF','DEPOSIT','FULL'], true)) $paymentMode = 'OFF';
+    $depositPctDefault = (int)($_POST['deposit_percent_default'] ?? ($bizBefore['deposit_percent_default'] ?? 30));
+    $depositPctDefault = validate_positive_int($depositPctDefault, 0, 100);
+
     $slotMin = validate_slot_minutes((int)($_POST['slot_minutes'] ?? 15));
     $slotCap = validate_positive_int((int)($_POST['slot_capacity'] ?? 1), 1, 10);
 	    $cancelNotice = validate_positive_int((int)($_POST['cancel_notice_minutes'] ?? 0), 0, 10080); // up to 7 days
@@ -120,7 +123,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	                      cancel_notice_minutes=:cn,
 	                      theme_primary=:tp, theme_accent=:ta,
 	                      reminder_minutes=:rm,
-	                      customer_choose_barber=:ccb
+	                      customer_choose_barber=:ccb,
+                          payment_mode=:pm,
+                          deposit_percent_default=:dp
 	                  WHERE id=:id')
 	        ->execute(array(
 	          ':n'=>$name,
@@ -136,6 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	          ':sc'=>$slotCap,
 	          ':cn'=>$cancelNotice,
 	          ':ccb'=>$choose,
+          ':pm'=>$paymentMode,
+          ':dp'=>$depositPctDefault,
 	          ':id'=>$bid,
 	        ));
 
@@ -332,6 +339,41 @@ admin_nav('settings');
     </select>
     <p class="muted small">Elegí con cuánta anticipación querés que aparezca en la lista de recordatorios.</p>
   </div>
+</div>
+
+<h3 style="margin-top:18px;">Cobros (MercadoPago)</h3>
+<div class="row">
+  <div style="flex:2;min-width:260px">
+    <label>Modo de cobro</label>
+    <?php $pm = strtoupper((string)($biz['payment_mode'] ?? 'OFF')); ?>
+    <select name="payment_mode">
+      <option value="OFF" <?php echo $pm==='OFF'?'selected':''; ?>>Sin cobro (queda pendiente de aprobación)</option>
+      <option value="DEPOSIT" <?php echo $pm==='DEPOSIT'?'selected':''; ?>>Cobrar seña (%)</option>
+      <option value="FULL" <?php echo $pm==='FULL'?'selected':''; ?>>Cobrar pago completo</option>
+    </select>
+    <p class="muted small">Si hay cobro, el turno se reserva por 15 minutos hasta que el cliente pague. Si no paga, vence automáticamente.</p>
+  </div>
+  <div style="flex:1;min-width:220px">
+    <label>% seña (por defecto)</label>
+    <input type="number" name="deposit_percent_default" min="0" max="100" value="<?php echo (int)($biz['deposit_percent_default'] ?? 30); ?>">
+    <p class="muted small">Solo se usa si el modo es “Cobrar seña”.</p>
+  </div>
+  <div style="flex:2;min-width:260px">
+    <label>Conexión MercadoPago</label>
+    <?php $mpConnected = (int)($biz['mp_connected'] ?? 0) === 1; ?>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <?php if ($mpConnected): ?>
+        <span class="badge ok">Conectado</span>
+        <a class="btn" href="mp_disconnect.php" onclick="return confirm('¿Desconectar MercadoPago de este negocio?');">Desconectar</a>
+      <?php else: ?>
+        <span class="badge">No conectado</span>
+        <a class="btn primary" href="mp_connect.php">Conectar MercadoPago</a>
+      <?php endif; ?>
+    </div>
+    <p class="muted small">Conectás una sola vez por negocio.</p>
+  </div>
+</div>
+
 </div>
 
 

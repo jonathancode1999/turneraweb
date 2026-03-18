@@ -9,7 +9,17 @@ return [
     'business_id' => 1,
 
     // SQLite DB file (ensure /data is writable by PHP)
+    // SQLite (deprecated) - kept for compatibility
     'sqlite_path' => __DIR__ . '/../data/app.sqlite',
+
+    // MySQL connection (recommended for production)
+    'db_driver' => 'mysql',
+    'mysql_host' => '127.0.0.1',
+    'mysql_port' => 3306,
+    'mysql_db'   => 'turnera_db',
+    'mysql_user' => 'jondev_user',
+    'mysql_pass' => '-45225755Jo-',
+    'mysql_charset' => 'utf8mb4',
 
     // Timezone for display and parsing
     'timezone' => 'America/Argentina/Buenos_Aires',

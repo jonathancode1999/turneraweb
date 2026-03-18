@@ -43,74 +43,85 @@ function rcopy($src, $dst){
 }
 rcopy($tpl, $target);
 
-$dbPath = $target . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'app.sqlite';
-// (Re)Create DB from schema.sql so new clients always start with the latest schema
-if (file_exists($dbPath)) @unlink($dbPath);
-$schemaFile = $target . DIRECTORY_SEPARATOR . 'schema.sql';
+
+// Create business in shared MySQL database
+$pdo = sa_pdo();
+
+// Ensure MySQL schema exists
+$schemaFile = cfg()['root_dir'] . DIRECTORY_SEPARATOR . 'schema_mysql.sql';
 if (!file_exists($schemaFile)) {
-  flash_set('err','Falta schema.sql en el template.');
+  flash_set('err','Falta schema_mysql.sql.');
   header('Location: dashboard.php'); exit;
 }
-$pdo = new PDO('sqlite:' . $dbPath);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$pdo->exec('PRAGMA foreign_keys = ON;');
-
-$sql = file_get_contents($schemaFile);
-if ($sql === false) {
-  flash_set('err','No se pudo leer schema.sql');
-  header('Location: dashboard.php'); exit;
+// Apply schema to the shared DB (idempotent).
+// IMPORTANT: avoid executing comment-only chunks which can cause random MySQL 1064 errors.
+$raw = file_get_contents($schemaFile);
+if ($raw === false) {
+  flash_set('err','No se pudo leer schema_mysql.sql.');
+  header('Location: dashboard.php');
+  exit;
 }
-$pdo->exec($sql);
 
-// Init DB: set business name + admin credentials, clear demo data if any
+// Strip BOM (if any)
+$raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw);
+
+// Remove /* ... */ blocks
+$rawNoBlockComments = preg_replace('#/\*.*?\*/#s', '', $raw);
+
+// Split by ';' and remove single-line comments / empty chunks
+try {
+  foreach (explode(';', $rawNoBlockComments) as $stmt) {
+    $stmt = trim($stmt);
+    if ($stmt === '') continue;
+    // Ignore comment-only chunks
+    if (preg_match('/^(--|#)/', $stmt)) continue;
+    $pdo->exec($stmt);
+  }
+} catch (Exception $e) {
+  flash_set('err', 'Error al aplicar schema_mysql.sql: ' . $e->getMessage());
+  header('Location: dashboard.php');
+  exit;
+}
 
 $pdo->beginTransaction();
-try{
-  $pdo->prepare('UPDATE businesses SET name=:n WHERE id=1')->execute([':n'=>$business]);
+try {
+  // Create business
+  $bst = $pdo->prepare("INSERT INTO businesses (name, timezone, slot_minutes, slot_capacity, payment_mode, deposit_percent_default) VALUES (?,?,?,?,?,?)");
+  $bst->execute([$business, 'America/Argentina/Buenos_Aires', 15, 1, 'OFF', 30]);
+  $businessId = (int)$pdo->lastInsertId();
 
-  // Reset users to only one admin
-  $pdo->exec('DELETE FROM users WHERE business_id=1;');
+  // Default branch
+  $pdo->prepare("INSERT INTO branches (business_id, name) VALUES (?,?)")->execute([$businessId, 'Sucursal Principal']);
+  $branchId = (int)$pdo->lastInsertId();
+
+  // Admin user
   $hash = password_hash($adminPass, PASSWORD_DEFAULT);
-  $stmt = $pdo->prepare('INSERT INTO users (business_id, username, password_hash, role) VALUES (1, :u, :p, :r)');
-  $stmt->execute([':u'=>$adminUser, ':p'=>$hash, ':r'=>'admin']);
+  $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (?,?,?,?)")
+      ->execute([$businessId, $adminUser, $hash, 'admin']);
 
-  // Ensure at least 1 branch
-  $branchId = (int)$pdo->query('SELECT id FROM branches WHERE business_id=1 ORDER BY id ASC LIMIT 1')->fetchColumn();
-  if($branchId<=0){
-    $pdo->prepare('INSERT INTO branches (business_id, name) VALUES (1, :n)')->execute([':n'=>'Sucursal 1']);
-    $branchId = (int)$pdo->lastInsertId();
-  }
-
-  // Ensure business_hours exists for 7 weekdays
-  $count = (int)$pdo->query('SELECT COUNT(*) FROM business_hours WHERE business_id=1 AND branch_id='.(int)$branchId)->fetchColumn();
-  if($count<7){
-    $pdo->exec('DELETE FROM business_hours WHERE business_id=1 AND branch_id='.(int)$branchId);
-    for($wd=0;$wd<=6;$wd++){
-      if($wd===0){
-        $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, is_closed) VALUES (1, :b, :w, 1)')
-            ->execute([':b'=>$branchId, ':w'=>$wd]);
-      } else {
-        $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (1, :b, :w, :o, :c, 0)')
-            ->execute([':b'=>$branchId, ':w'=>$wd, ':o'=>'09:00', ':c'=>'19:00']);
-      }
+  // Default hours
+  for($wd=0;$wd<=6;$wd++){
+    if($wd===0){
+      $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, is_closed) VALUES (?,?,?,1)")
+          ->execute([$businessId, $branchId, $wd]);
+    } else {
+      $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (?,?,?,?,?,0)")
+          ->execute([$businessId, $branchId, $wd, '09:00', '19:00']);
     }
   }
-
-  // Clean demo tables
-  $pdo->exec('DELETE FROM services WHERE business_id=1;');
-  $pdo->exec('DELETE FROM barbers WHERE business_id=1;');
-  $pdo->exec('DELETE FROM barber_hours WHERE business_id=1;');
-  $pdo->exec('DELETE FROM blocks WHERE business_id=1;');
-  $pdo->exec('DELETE FROM appointments WHERE business_id=1;');
 
   $pdo->commit();
 } catch(Throwable $e){
   $pdo->rollBack();
-  // remove folder if failed
-  // best effort
   flash_set('err','Error creando cliente: '.$e->getMessage());
   header('Location: dashboard.php'); exit;
 }
+
+// Patch client config with new business_id
+$cfgFile = $target . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'config.php';
+$cfgTxt = file_get_contents($cfgFile);
+$cfgTxt = preg_replace("/'business_id'\s*=>\s*\d+\s*,/", "'business_id' => ".$businessId.",", $cfgTxt);
+file_put_contents($cfgFile, $cfgTxt);
 
 flash_set('ok','Cliente creado: '.$slug);
 header('Location: manage.php?c='.urlencode($slug));

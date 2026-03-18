@@ -24,7 +24,7 @@ function get_service(int $businessId, int $serviceId): array {
 
 function get_barber(int $businessId, int $barberId, int $branchId = 1): array {
     $pdo = db();
-    $stmt = $pdo->prepare('SELECT * FROM barbers WHERE id=:id AND business_id=:bid AND branch_id=:brid AND is_active=1');
+    $stmt = $pdo->prepare('SELECT * FROM profesionales WHERE id=:id AND business_id=:bid AND branch_id=:brid AND is_active=1');
     $stmt->execute([':id' => $barberId, ':bid' => $businessId,
             ':brid' => $branchId]);
     $b = $stmt->fetch();
@@ -55,7 +55,7 @@ function business_hours_for_day(int $businessId, DateTimeImmutable $day, int $br
 function barber_hours_for_day(int $businessId, int $barberId, DateTimeImmutable $day, int $branchId = 1): array {
     $pdo = db();
     $weekday = (int)$day->format('w');
-    $stmt = $pdo->prepare('SELECT * FROM barber_hours WHERE business_id=:bid AND branch_id=:brid AND barber_id=:bar AND weekday=:w');
+    $stmt = $pdo->prepare('SELECT * FROM barber_hours WHERE business_id=:bid AND branch_id=:brid AND professional_id=:bar AND weekday=:w');
     $stmt->execute([':bid' => $businessId,
             ':brid' => $branchId, ':bar' => $barberId, ':w' => $weekday]);
     $h = $stmt->fetch();
@@ -67,7 +67,7 @@ function barber_hours_for_day(int $businessId, int $barberId, DateTimeImmutable 
 function barber_is_on_timeoff(int $businessId, int $barberId, DateTimeImmutable $day, int $branchId = 1): bool {
     $pdo = db();
     $ymd = $day->format('Y-m-d');
-    $stmt = $pdo->prepare('SELECT 1 FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid AND barber_id=:bar AND start_date <= :d AND end_date >= :d LIMIT 1');
+    $stmt = $pdo->prepare('SELECT 1 FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid AND professional_id=:bar AND start_date <= :d AND end_date >= :d LIMIT 1');
     $stmt->execute([':bid' => $businessId,
             ':brid' => $branchId, ':bar' => $barberId, ':d' => $ymd]);
     return (bool)$stmt->fetchColumn();
@@ -88,7 +88,7 @@ function day_blocks(int $businessId, DateTimeImmutable $day, int $branchId = 1, 
     } else {
         $stmt = $pdo->prepare("SELECT start_at, end_at FROM blocks
                                WHERE business_id=:bid AND branch_id=:brid
-                                 AND (barber_id IS NULL OR barber_id=:bar)
+                                 AND (professional_id IS NULL OR professional_id=:bar)
                                  AND NOT (end_at <= :s OR start_at >= :e)");
         $stmt->execute([
             ':bid' => $businessId,
@@ -109,8 +109,9 @@ function day_appointments_busy(int $businessId, DateTimeImmutable $day, int $bra
     // Busy: pending approval / accepted / reschedule pending / occupied / completed
     $sql = "SELECT id, start_at, end_at, status FROM appointments
         WHERE business_id=:bid AND branch_id=:brid
-          AND barber_id=:bar
-          AND status IN ('PENDIENTE_APROBACION','ACEPTADO','REPROGRAMACION_PENDIENTE','OCUPADO','COMPLETADO')
+          AND professional_id=:bar
+          AND (status IN ('PENDIENTE_APROBACION','ACEPTADO','REPROGRAMACION_PENDIENTE','OCUPADO','COMPLETADO')
+           OR (status='PENDIENTE_PAGO' AND payment_status='pending' AND (payment_expires_at IS NULL OR payment_expires_at > NOW())))
           AND NOT (end_at <= :s OR start_at >= :e)";
     $params = [':bid' => $businessId, ':brid' => $branchId,
         ':bar' => $barberId,
@@ -149,7 +150,7 @@ function available_times_for_day(int $businessId, int $branchId, int $barberId, 
     $day = DateTimeImmutable::createFromFormat('Y-m-d', $ymd, new DateTimeZone($cfg['timezone']));
     if (!$day) throw new InvalidArgumentException('Fecha inválida');
 
-    $barber = get_barber($businessId, $barberId, $branchId);
+    $profesional = get_barber($businessId, $barberId, $branchId);
     if (barber_is_on_timeoff($businessId, $barberId, $day, $branchId)) return [];
 
     $hours = barber_hours_for_day($businessId, $barberId, $day, $branchId);
@@ -165,7 +166,7 @@ function available_times_for_day(int $businessId, int $branchId, int $barberId, 
     $blocks = day_blocks($businessId, $day, $branchId, $barberId);
     $busy = day_appointments_busy($businessId, $day, $branchId, $barberId);
     $tz = new DateTimeZone($cfg['timezone']);
-    $capacity = max(1, (int)($barber['capacity'] ?? 1));
+    $capacity = max(1, (int)($profesional['capacity'] ?? 1));
 
     $now = now_tz();
 
@@ -218,7 +219,7 @@ function next_working_date_for_barber(
 function timeoff_range_for_barber_on_day(int $businessId, int $barberId, DateTimeImmutable $day, int $branchId = 1): ?array {
     $pdo = db();
     $ymd = $day->format('Y-m-d');
-    $stmt = $pdo->prepare('SELECT start_date, end_date FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid AND barber_id=:bar AND start_date <= :d AND end_date >= :d ORDER BY end_date DESC LIMIT 1');
+    $stmt = $pdo->prepare('SELECT start_date, end_date FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid AND professional_id=:bar AND start_date <= :d AND end_date >= :d ORDER BY end_date DESC LIMIT 1');
     $stmt->execute([':bid' => $businessId,
             ':brid' => $branchId, ':bar' => $barberId, ':d' => $ymd]);
     $row = $stmt->fetch();
@@ -226,16 +227,16 @@ function timeoff_range_for_barber_on_day(int $businessId, int $barberId, DateTim
 }
 
 // Extended response for the public API.
-// barberId: 0 = any available barber ("Primer profesional disponible").
+// barberId: 0 = any available profesional ("Primer profesional disponible").
 function available_times_for_day_ex(int $businessId, int $branchId, int $barberId, int $serviceId, string $ymd): array {
     $cfg = app_config();
     $day = DateTimeImmutable::createFromFormat('Y-m-d', $ymd, new DateTimeZone($cfg['timezone']));
     if (!$day) return ['ok' => false, 'error' => 'Fecha inválida'];
 
-    // Any barber: union of available slots across active barbers
+    // Any profesional: union of available slots across active profesionales
     if ($barberId === 0) {
         $pdo = db();
-	    	$rows = $pdo->prepare('SELECT id FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+	    	$rows = $pdo->prepare('SELECT id FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 	    	$rows->execute([':bid' => $businessId, ':brid' => $branchId]);
         $ids = array_map(fn($r) => (int)$r['id'], $rows->fetchAll() ?: []);
         $set = [];
@@ -249,12 +250,12 @@ function available_times_for_day_ex(int $businessId, int $branchId, int $barberI
         return ['ok' => true, 'times' => $times];
     }
 
-    // Specific barber
-    $barber = get_barber($businessId, $barberId, $branchId);
+    // Specific profesional
+    $profesional = get_barber($businessId, $barberId, $branchId);
     $times = available_times_for_day($businessId, $branchId, $barberId, $serviceId, $ymd);
 
     if (count($times) > 0) {
-        return ['ok' => true, 'times' => $times, 'barber_name' => (string)$barber['name']];
+        return ['ok' => true, 'times' => $times, 'barber_name' => (string)$profesional['name']];
     }
 
     // No times: explain why (vacation vs fully booked/closed)
@@ -263,21 +264,21 @@ function available_times_for_day_ex(int $businessId, int $branchId, int $barberI
         $end = DateTimeImmutable::createFromFormat('Y-m-d', $vac['end_date'], new DateTimeZone($cfg['timezone'])) ?: $day;
         $next = next_working_date_for_barber($businessId, $barberId, $end->modify('+1 day'));
         $msg = $next
-            ? "No hay horarios disponibles para " . (string)$barber['name'] . ". Está de vacaciones. Vuelve el " . fmt_date_es($next) . "."
-            : "No hay horarios disponibles para " . (string)$barber['name'] . ". Está de vacaciones.";
-        return ['ok' => true, 'times' => [], 'barber_name' => (string)$barber['name'], 'message' => $msg];
+            ? "No hay horarios disponibles para " . (string)$profesional['name'] . ". Está de vacaciones. Vuelve el " . fmt_date_es($next) . "."
+            : "No hay horarios disponibles para " . (string)$profesional['name'] . ". Está de vacaciones.";
+        return ['ok' => true, 'times' => [], 'barber_name' => (string)$profesional['name'], 'message' => $msg];
     }
 
-    return ['ok' => true, 'times' => [], 'barber_name' => (string)$barber['name']];
+    return ['ok' => true, 'times' => [], 'barber_name' => (string)$profesional['name']];
 }
 
-// If the user chose "Primer profesional disponible" (barber_id=0), pick a barber who can take the requested start time.
+// If the user chose "Primer profesional disponible" (professional_id=0), pick a profesional who can take the requested start time.
 function pick_barber_for_slot(int $businessId, int $branchId, int $serviceId, DateTimeImmutable $start): int {
     $pdo = db();
-    $stmt = $pdo->prepare('SELECT id FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+    $stmt = $pdo->prepare('SELECT id FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
     $stmt->execute([':bid' => $businessId, ':brid' => $branchId]);
-    $barbers = $stmt->fetchAll() ?: [];
-    foreach ($barbers as $b) {
+    $profesionales = $stmt->fetchAll() ?: [];
+    foreach ($profesionales as $b) {
         $id = (int)$b['id'];
         try {
             // Will throw if not available
@@ -296,8 +297,8 @@ function assert_slot_available(int $businessId, int $branchId, int $barberId, in
     $slotMin = (int)($biz['slot_minutes'] ?? $cfg['slot_minutes']);
     if ($slotMin < 10) $slotMin = 10;
 
-    $barber = get_barber($businessId, $barberId, $branchId);
-    $capacity = max(1, (int)($barber['capacity'] ?? 1));
+    $profesional = get_barber($businessId, $barberId, $branchId);
+    $capacity = max(1, (int)($profesional['capacity'] ?? 1));
 
     $service = get_service($businessId, $serviceId);
     $durationMin = round_duration_to_slot((int)$service['duration_minutes'], $slotMin);

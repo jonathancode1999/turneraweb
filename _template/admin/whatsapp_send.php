@@ -43,7 +43,7 @@ if (!$branch) {
 $st = $pdo->prepare("SELECT a.*, s.name AS service_name, b.name AS barber_name
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers b ON b.id=a.barber_id
+    JOIN profesionales b ON b.id=a.professional_id
     WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id
     LIMIT 1");
 $st->execute([':bid'=>$bid, ':brid'=>$branchId, ':id'=>$aid]);

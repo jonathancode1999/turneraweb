@@ -3,7 +3,7 @@
 // Validates size, real image content, MIME, and optionally re-encodes to JPG.
 //
 // Usage:
-//   $rel = upload_image_from_field('avatar_file', __DIR__.'/../public/uploads/barbers', 'barber_12_avatar', 4*1024*1024);
+//   $rel = upload_image_from_field('avatar_file', __DIR__.'/../public/uploads/profesionales', 'barber_12_avatar', 4*1024*1024);
 
 require_once __DIR__ . '/utils.php';
 
@@ -66,7 +66,7 @@ function upload_image_from_field(string $field, string $absDir, string $baseName
     $realOut = realpath($outAbs);
     if ($publicDir && $realOut && strpos($realOut, $publicDir) === 0) {
         $rel = ltrim(str_replace('\\','/', substr($realOut, strlen($publicDir))), '/');
-        return $rel; // e.g., uploads/barbers/x.jpg
+        return $rel; // e.g., uploads/profesionales/x.jpg
     }
     // Best effort
     $rel = 'uploads/' . basename(dirname($outAbs)) . '/' . basename($outAbs);

@@ -36,7 +36,7 @@ try {
             }
         }
 
-        $pdo->prepare('INSERT INTO blocks (business_id, branch_id, barber_id, start_at, end_at, reason) VALUES (:bid, NULL, :s, :e, :r)')
+        $pdo->prepare('INSERT INTO blocks (business_id, branch_id, professional_id, start_at, end_at, reason) VALUES (:bid, NULL, :s, :e, :r)')
             ->execute([
                 ':bid' => $bid,
                 ':s' => $start->format('Y-m-d H:i:s'),
@@ -50,7 +50,7 @@ try {
         $endDate = trim((string)($_POST['end_date'] ?? ''));
         $st = trim((string)($_POST['start_time'] ?? ''));
         $et = trim((string)($_POST['end_time'] ?? ''));
-        $barberId = (int)($_POST['barber_id'] ?? 0);
+        $barberId = (int)($_POST['professional_id'] ?? 0);
         $reason = trim((string)($_POST['reason'] ?? ''));
         if ($reason === '') $reason = 'Bloqueo manual';
 
@@ -64,7 +64,7 @@ try {
             throw new RuntimeException('El horario "hasta" debe ser mayor al "desde".');
         }
 
-        $pdo->prepare('INSERT INTO blocks (business_id, branch_id, barber_id, start_at, end_at, reason) VALUES (:bid, :bar, :s, :e, :r)')
+        $pdo->prepare('INSERT INTO blocks (business_id, branch_id, professional_id, start_at, end_at, reason) VALUES (:bid, :bar, :s, :e, :r)')
             ->execute([
                 ':bid' => $bid,
                 ':bar' => ($barberId > 0 ? $barberId : null),

@@ -30,7 +30,7 @@ function countq(PDO $pdo, string $sql, array $params): int {
 
 $branchesCount = countq($pdo, 'SELECT COUNT(*) FROM branches WHERE business_id=?', [$bizId]);
 $servicesCount = countq($pdo, 'SELECT COUNT(*) FROM services WHERE business_id=? AND is_active=1', [$bizId]);
-$prosCount = countq($pdo, 'SELECT COUNT(*) FROM barbers WHERE business_id=? AND is_active=1', [$bizId]);
+$prosCount = countq($pdo, 'SELECT COUNT(*) FROM profesionales WHERE business_id=? AND is_active=1', [$bizId]);
 
 $hasBrand = (trim((string)$biz['name']) !== '');
 $hasLogo  = trim((string)$biz['logo_path']) !== '';
@@ -85,7 +85,7 @@ $items[] = [
   'ok' => $prosCount > 0,
   'title' => 'Profesionales',
   'desc' => 'Cargá tus profesionales y asignales sucursal.',
-  'link' => 'barbers.php',
+  'link' => 'profesionales.php',
   'btn' => 'Cargar profesionales'
 ];
 $items[] = [

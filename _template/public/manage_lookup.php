@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $q = $pdo->prepare('SELECT a.*, s.name AS service_name, b.name AS barber_name
                         FROM appointments a
                         JOIN services s ON s.id = a.service_id
-                        LEFT JOIN barbers b ON b.id = a.barber_id
+                        LEFT JOIN profesionales b ON b.id = a.professional_id
                         WHERE a.business_id=:bid
                           AND lower(a.customer_email)=lower(:email)
                           AND a.service_id=:sid

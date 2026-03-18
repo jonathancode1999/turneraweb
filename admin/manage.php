@@ -11,12 +11,34 @@ $tab = $_GET['tab'] ?? 'business';
 try{ $pdo = client_pdo($slug); }
 catch(Throwable $e){ flash_set('err','No se pudo abrir DB: '.$e->getMessage()); header('Location: dashboard.php'); exit; }
 
+// Cada cliente/sitio tiene su propio business_id (guardado en /<slug>/includes/config.php).
+// Si hardcodeamos id=1, el Super Admin termina editando otro negocio y "no se reflejan" los cambios.
+$bid = 0;
+try {
+  $bid = client_business_id($slug);
+} catch (Throwable $e) {
+  flash_set('err','No se pudo leer business_id del cliente: '.$e->getMessage());
+  header('Location: dashboard.php');
+  exit;
+}
+
+// Cargamos el negocio/branches antes de procesar POST (se usan para branding).
+$biz = $pdo->prepare('SELECT * FROM businesses WHERE id=:bid');
+$biz->execute([':bid' => $bid]);
+$biz = $biz->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$branchesStmt = $pdo->prepare('SELECT id,name FROM branches WHERE business_id=:bid ORDER BY id');
+$branchesStmt->execute([':bid' => $bid]);
+$branches = $branchesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
 if($_SERVER['REQUEST_METHOD']==='POST'){
   csrf_check();
   $action = $_POST['action'] ?? '';
   try{
     if($action==='save_business'){
       // Optional branding uploads (logo/cover) saved into client public/uploads/branding
+      // Nota: si Nginx devuelve 413 (Request Entity Too Large), es un límite del servidor
+      // (client_max_body_size). Aumentalo en tu site conf, p.ej. 8M o 20M.
       $logo = $biz['logo_path'] ?? '';
       $cover = $biz['cover_path'] ?? '';
       $clientUploads = client_dir($slug) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'branding';
@@ -45,7 +67,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       $newCover = $save_img('cover', 'cover');
       if($newCover) $cover = $newCover;
 
-      $pdo->prepare("UPDATE businesses SET name=:n, owner_email=:e, address=:a, maps_url=:m, whatsapp_phone=:w, instagram_url=:ig, intro_text=:it, timezone=:tz, theme_primary=:tp, theme_accent=:ta, logo_path=:lp, cover_path=:cp WHERE id=1")
+      $pdo->prepare("UPDATE businesses SET name=:n, owner_email=:e, address=:a, maps_url=:m, whatsapp_phone=:w, instagram_url=:ig, intro_text=:it, timezone=:tz, theme_primary=:tp, theme_accent=:ta, logo_path=:lp, cover_path=:cp WHERE id=:bid")
           ->execute([
             ':n'=>trim($_POST['name']??''),
             ':e'=>trim($_POST['owner_email']??''),
@@ -59,13 +81,31 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             ':ta'=>trim($_POST['theme_accent']??''),
             ':lp'=>$logo,
             ':cp'=>$cover,
+            ':bid'=>$bid,
           ]);
+
+      // Importante: el sitio público usa principalmente datos de la SUCURSAL.
+      // Si el admin principal carga dirección / maps / whatsapp acá, replicamos en la sucursal 1
+      // para que el "Mapa" y el "Cómo llegar" se actualicen en el sitio.
+      try {
+        $pdo->prepare("UPDATE branches SET address=:a, maps_url=:m, whatsapp_phone=:w, owner_email=:e WHERE business_id=:bid AND id=1")
+            ->execute([
+              ':a'=>trim($_POST['address']??''),
+              ':m'=>trim($_POST['maps_url']??''),
+              ':w'=>trim($_POST['whatsapp_phone']??''),
+              ':e'=>trim($_POST['owner_email']??''),
+              ':bid'=>$bid,
+            ]);
+      } catch (Throwable $ignore) {
+        // si la sucursal 1 no existe, no bloqueamos el guardado del negocio
+      }
+
       flash_set('ok','Negocio actualizado.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=business'); exit;
     }
 
     if($action==='save_smtp'){
-      $pdo->prepare("UPDATE businesses SET smtp_host=:h, smtp_port=:p, smtp_user=:u, smtp_pass=:pw, smtp_from_email=:f, smtp_from_name=:fn, smtp_secure=:s, smtp_enabled=:en WHERE id=1")
+      $pdo->prepare("UPDATE businesses SET smtp_host=:h, smtp_port=:p, smtp_user=:u, smtp_pass=:pw, smtp_from_email=:f, smtp_from_name=:fn, smtp_secure=:s, smtp_enabled=:en WHERE id=:bid")
           ->execute([
             ':h'=>trim($_POST['smtp_host']??''),
             ':p'=>intval($_POST['smtp_port']??0),
@@ -75,14 +115,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             ':fn'=>trim($_POST['smtp_from_name']??''),
             ':s'=>trim($_POST['smtp_secure']??''),
             ':en'=>(trim($_POST['smtp_host']??'')!=='' && trim($_POST['smtp_user']??'')!=='' && trim($_POST['smtp_pass']??'')!=='') ? 1 : 0,
+            ':bid'=>$bid,
           ]);
       flash_set('ok','SMTP actualizado.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=smtp'); exit;
     }
 
     if($action==='branch_add'){
-      $pdo->prepare("INSERT INTO branches (business_id, name, address, whatsapp_phone, owner_email, maps_url) VALUES (1,:n,:a,:w,:e,:m)")
+      $pdo->prepare("INSERT INTO branches (business_id, name, address, whatsapp_phone, owner_email, maps_url) VALUES (:bid,:n,:a,:w,:e,:m)")
           ->execute([
+            ':bid'=>$bid,
             ':n'=>trim($_POST['name']??'Sucursal'),
             ':a'=>trim($_POST['address']??''),
             ':w'=>trim($_POST['whatsapp_phone']??''),
@@ -94,14 +136,15 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
     if($action==='branch_del'){
       $id=intval($_POST['id']??0);
-      $pdo->prepare("DELETE FROM branches WHERE business_id=1 AND id=:id")->execute([':id'=>$id]);
+      $pdo->prepare("DELETE FROM branches WHERE business_id=:bid AND id=:id")->execute([':bid'=>$bid, ':id'=>$id]);
       flash_set('ok','Sucursal eliminada.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=branches'); exit;
     }
 
     if($action==='service_add'){
-      $pdo->prepare("INSERT INTO services (business_id, name, description, duration_minutes, price_ars, image_url, is_active) VALUES (1,:n,:d,:dur,:pr,:img,1)")
+      $pdo->prepare("INSERT INTO services (business_id, name, description, duration_minutes, price_ars, image_url, is_active) VALUES (:bid,:n,:d,:dur,:pr,:img,1)")
           ->execute([
+            ':bid'=>$bid,
             ':n'=>trim($_POST['name']??'Servicio'),
             ':d'=>trim($_POST['description']??''),
             ':dur'=>intval($_POST['duration_minutes']??30),
@@ -113,32 +156,34 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
     if($action==='service_del'){
       $id=intval($_POST['id']??0);
-      $pdo->prepare("DELETE FROM services WHERE business_id=1 AND id=:id")->execute([':id'=>$id]);
+      $pdo->prepare("DELETE FROM services WHERE business_id=:bid AND id=:id")->execute([':bid'=>$bid, ':id'=>$id]);
       flash_set('ok','Servicio eliminado.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=services'); exit;
     }
 
     if($action==='barber_add'){
-      $pdo->prepare("INSERT INTO barbers (business_id, branch_id, name, capacity, is_active) VALUES (1,:b,:n,:c,1)")
+      $pdo->prepare("INSERT INTO profesionales (business_id, branch_id, name, capacity, is_active) VALUES (:bid,:b,:n,:c,1)")
           ->execute([
+            ':bid'=>$bid,
             ':b'=>intval($_POST['branch_id']??1),
             ':n'=>trim($_POST['name']??'Profesional'),
             ':c'=>intval($_POST['capacity']??1),
           ]);
       flash_set('ok','Profesional creado.');
-      header('Location: manage.php?c='.urlencode($slug).'&tab=barbers'); exit;
+      header('Location: manage.php?c='.urlencode($slug).'&tab=profesionales'); exit;
     }
     if($action==='barber_del'){
       $id=intval($_POST['id']??0);
-      $pdo->prepare("DELETE FROM barbers WHERE business_id=1 AND id=:id")->execute([':id'=>$id]);
+      $pdo->prepare("DELETE FROM profesionales WHERE business_id=:bid AND id=:id")->execute([':bid'=>$bid, ':id'=>$id]);
       flash_set('ok','Profesional eliminado.');
-      header('Location: manage.php?c='.urlencode($slug).'&tab=barbers'); exit;
+      header('Location: manage.php?c='.urlencode($slug).'&tab=profesionales'); exit;
     }
 
     if($action==='user_add'){
       $hash = password_hash((string)($_POST['password']??''), PASSWORD_DEFAULT);
-      $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (1,:u,:p,:r)")
+      $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (:bid,:u,:p,:r)")
           ->execute([
+            ':bid'=>$bid,
             ':u'=>trim($_POST['username']??''),
             ':p'=>$hash,
             ':r'=>trim($_POST['role']??'admin'),
@@ -149,26 +194,26 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     if($action==='user_reset'){
       $id=intval($_POST['id']??0);
       $hash = password_hash((string)($_POST['password']??''), PASSWORD_DEFAULT);
-      $pdo->prepare("UPDATE users SET password_hash=:p WHERE business_id=1 AND id=:id")->execute([':p'=>$hash, ':id'=>$id]);
+      $pdo->prepare("UPDATE users SET password_hash=:p WHERE business_id=:bid AND id=:id")->execute([':p'=>$hash, ':bid'=>$bid, ':id'=>$id]);
       flash_set('ok','Contraseña actualizada.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
     }
     if($action==='user_del'){
       $id=intval($_POST['id']??0);
-      $pdo->prepare("DELETE FROM users WHERE business_id=1 AND id=:id")->execute([':id'=>$id]);
+      $pdo->prepare("DELETE FROM users WHERE business_id=:bid AND id=:id")->execute([':bid'=>$bid, ':id'=>$id]);
       flash_set('ok','Usuario eliminado.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
     }
 
     if($action==='save_hours'){
       $branch=intval($_POST['branch_id']??1);
-      $pdo->prepare("DELETE FROM business_hours WHERE business_id=1 AND branch_id=:b")->execute([':b'=>$branch]);
+      $pdo->prepare("DELETE FROM business_hours WHERE business_id=:bid AND branch_id=:b")->execute([':bid'=>$bid, ':b'=>$branch]);
       for($wd=0;$wd<=6;$wd++){
         $closed = isset($_POST['closed'][$wd]) ? 1 : 0;
         $open = trim($_POST['open'][$wd] ?? '');
         $close = trim($_POST['close'][$wd] ?? '');
-        $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (1,:b,:w,:o,:c,:cl)")
-            ->execute([':b'=>$branch,':w'=>$wd,':o'=>$open,':c'=>$close,':cl'=>$closed]);
+        $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:b,:w,:o,:c,:cl)")
+            ->execute([':bid'=>$bid, ':b'=>$branch,':w'=>$wd,':o'=>$open,':c'=>$close,':cl'=>$closed]);
       }
       flash_set('ok','Horarios guardados.');
       header('Location: manage.php?c='.urlencode($slug).'&tab=hours'); exit;
@@ -185,19 +230,53 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       $clientPath = client_dir($slug);
       $backupDir = __DIR__.DIRECTORY_SEPARATOR.'backups';
       if(!is_dir($backupDir)) mkdir($backupDir,0777,true);
-      $name = $slug.'_'.date('Ymd_His').'.zip';
-      $zipPath = $backupDir.DIRECTORY_SEPARATOR.$name;
+      $base = $slug.'_'.date('Ymd_His');
 
-      $zip = new ZipArchive();
-      if($zip->open($zipPath, ZipArchive::CREATE)!==TRUE) throw new RuntimeException('No se pudo crear ZIP');
-      $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($clientPath, FilesystemIterator::SKIP_DOTS));
-      foreach($it as $file){
-        $fp = $file->getPathname();
-        $rel = substr($fp, strlen($clientPath)+1);
-        $zip->addFile($fp, $slug.'/'.$rel);
+      // 1) Preferimos ZIP (si está habilitado ZipArchive)
+      if (class_exists('ZipArchive')) {
+        $name = $base.'.zip';
+        $zipPath = $backupDir.DIRECTORY_SEPARATOR.$name;
+
+        $zip = new ZipArchive();
+        if($zip->open($zipPath, ZipArchive::CREATE)!==TRUE) throw new RuntimeException('No se pudo crear ZIP');
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($clientPath, FilesystemIterator::SKIP_DOTS));
+        foreach($it as $file){
+          $fp = $file->getPathname();
+          $rel = substr($fp, strlen($clientPath)+1);
+          $zip->addFile($fp, $slug.'/'.$rel);
+        }
+        $zip->close();
+        flash_set('ok','Backup creado: '.$name);
       }
-      $zip->close();
-      flash_set('ok','Backup creado: '.$name);
+      // 2) Si no hay ZipArchive, intentamos TAR.GZ con PharData
+      else if (class_exists('PharData')) {
+        $tarName = $base.'.tar';
+        $tarPath = $backupDir.DIRECTORY_SEPARATOR.$tarName;
+        if (file_exists($tarPath)) @unlink($tarPath);
+        $phar = new PharData($tarPath);
+        $phar->buildFromDirectory($clientPath);
+        // Comprimir (si zlib está disponible)
+        $gzName = $base.'.tar.gz';
+        try {
+          $phar->compress(Phar::GZ);
+          // Phar agrega .gz al archivo tar
+          @unlink($tarPath);
+          $final = $backupDir.DIRECTORY_SEPARATOR.$gzName;
+          // El archivo real queda como .tar.gz (o .tar.gz dependiendo)
+          // Si el nombre difiere, lo normalizamos
+          $generated = $tarPath.'.gz';
+          if (file_exists($generated) && !file_exists($final)) {
+            @rename($generated, $final);
+          }
+          flash_set('ok','Backup creado: '.$gzName);
+        } catch (Throwable $e) {
+          // Si no se puede comprimir, dejamos el .tar
+          flash_set('ok','Backup creado: '.$tarName.' (sin compresión)');
+        }
+      }
+      else {
+        throw new RuntimeException('Backup: falta ZipArchive y PharData. En Ubuntu: sudo apt install php-zip');
+      }
       header('Location: manage.php?c='.urlencode($slug).'&tab=ops'); exit;
     }
 
@@ -221,8 +300,14 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   }
 }
 
-$biz = $pdo->query("SELECT * FROM businesses WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-$branches = $pdo->query("SELECT id,name FROM branches WHERE business_id=1 ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+// Re-cargamos por si hubo cambios.
+$bizStmt = $pdo->prepare('SELECT * FROM businesses WHERE id=:bid');
+$bizStmt->execute([':bid'=>$bid]);
+$biz = $bizStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$branchesStmt = $pdo->prepare('SELECT id,name FROM branches WHERE business_id=:bid ORDER BY id');
+$branchesStmt->execute([':bid'=>$bid]);
+$branches = $branchesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 function tab_link($slug,$tab,$label,$active){
   $cls = $active ? 'tab active' : 'tab';
@@ -238,7 +323,7 @@ header_html('Gestionar: '.$slug);
       tab_link($slug,'smtp','SMTP', $tab==='smtp');
       tab_link($slug,'branches','Sucursales', $tab==='branches');
       tab_link($slug,'services','Servicios', $tab==='services');
-      tab_link($slug,'barbers','Profesionales', $tab==='barbers');
+      tab_link($slug,'profesionales','Profesionales', $tab==='profesionales');
       tab_link($slug,'hours','Horarios', $tab==='hours');
       tab_link($slug,'users','Usuarios', $tab==='users');
       tab_link($slug,'ops','Operaciones', $tab==='ops');
@@ -315,7 +400,9 @@ header_html('Gestionar: '.$slug);
 <?php endif; ?>
 
 <?php if($tab==='branches'): 
-$rows = $pdo->query("SELECT * FROM branches WHERE business_id=1 ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT * FROM branches WHERE business_id=:bid ORDER BY id");
+$st->execute([':bid'=>$bid]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <div class="grid">
   <div class="col-8">
@@ -362,7 +449,9 @@ $rows = $pdo->query("SELECT * FROM branches WHERE business_id=1 ORDER BY id")->f
 <?php endif; ?>
 
 <?php if($tab==='services'):
-$rows = $pdo->query("SELECT id,name,duration_minutes,price_ars,is_active FROM services WHERE business_id=1 ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT id,name,duration_minutes,price_ars,is_active FROM services WHERE business_id=:bid ORDER BY id");
+$st->execute([':bid'=>$bid]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <div class="grid">
   <div class="col-8">
@@ -408,8 +497,10 @@ $rows = $pdo->query("SELECT id,name,duration_minutes,price_ars,is_active FROM se
 </div>
 <?php endif; ?>
 
-<?php if($tab==='barbers'):
-$rows = $pdo->query("SELECT b.id,b.name,b.branch_id,b.is_active,b.capacity,br.name as branch_name FROM barbers b JOIN branches br ON br.id=b.branch_id WHERE b.business_id=1 ORDER BY b.id")->fetchAll(PDO::FETCH_ASSOC);
+<?php if($tab==='profesionales'):
+$st = $pdo->prepare("SELECT b.id,b.name,b.branch_id,b.is_active,b.capacity,br.name as branch_name FROM profesionales b JOIN branches br ON br.id=b.branch_id WHERE b.business_id=:bid ORDER BY b.id");
+$st->execute([':bid'=>$bid]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <div class="grid">
   <div class="col-8">
@@ -463,7 +554,9 @@ $rows = $pdo->query("SELECT b.id,b.name,b.branch_id,b.is_active,b.capacity,br.na
 
 <?php if($tab==='hours'):
 $branchId = (int)($branches[0]['id'] ?? 1);
-$rows = $pdo->query("SELECT weekday,open_time,close_time,is_closed FROM business_hours WHERE business_id=1 AND branch_id=".(int)$branchId." ORDER BY weekday")->fetchAll(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT weekday,open_time,close_time,is_closed FROM business_hours WHERE business_id=:bid AND branch_id=:brid ORDER BY weekday");
+$st->execute([':bid'=>$bid, ':brid'=>$branchId]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 $map = [];
 foreach($rows as $r){ $map[(int)$r['weekday']]=$r; }
 $days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -497,7 +590,9 @@ $days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 <?php endif; ?>
 
 <?php if($tab==='users'):
-$rows = $pdo->query("SELECT id,username,role,created_at FROM users WHERE business_id=1 ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$st = $pdo->prepare("SELECT id,username,role,created_at FROM users WHERE business_id=:bid ORDER BY id");
+$st->execute([':bid'=>$bid]);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <div class="grid">
   <div class="col-8">
@@ -569,14 +664,19 @@ $rows = $pdo->query("SELECT id,username,role,created_at FROM users WHERE busines
       <form method="post" style="margin-bottom:10px">
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
         <input type="hidden" name="action" value="backup">
-        <button class="btn">Crear backup ZIP</button>
+        <button class="btn">Crear backup</button>
         <div class="small" style="margin-top:6px">Se guarda en <code>admin/backups/</code></div>
       </form>
       <?php
         $backupDir = __DIR__ . DIRECTORY_SEPARATOR . 'backups';
         $bfiles = [];
         if (is_dir($backupDir)) {
-          $bfiles = glob($backupDir . DIRECTORY_SEPARATOR . $slug . '_*.zip') ?: [];
+          // Soportamos .zip, .tar.gz y .tar (según extensiones disponibles en el servidor)
+          $bfiles = array_merge(
+            glob($backupDir . DIRECTORY_SEPARATOR . $slug . '_*.zip') ?: [],
+            glob($backupDir . DIRECTORY_SEPARATOR . $slug . '_*.tar.gz') ?: [],
+            glob($backupDir . DIRECTORY_SEPARATOR . $slug . '_*.tar') ?: []
+          );
           rsort($bfiles);
         }
       ?>

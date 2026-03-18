@@ -102,8 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ));
         $newId = (int)$pdo->lastInsertId();
 
-        // Create first barber/staff for the new branch (minimum setup)
-        $st2 = $pdo->prepare("INSERT INTO barbers (business_id, branch_id, name, capacity, is_active, avatar_path, cover_path) VALUES (:bid,:brid,:n,1,1,'','')");
+        // Create first profesional/staff for the new branch (minimum setup)
+        $st2 = $pdo->prepare("INSERT INTO profesionales (business_id, branch_id, name, capacity, is_active, avatar_path, cover_path) VALUES (:bid,:brid,:n,1,1,'','')");
         $st2->execute(array(':bid'=>$bizId, ':brid'=>$newId, ':n'=>$firstBarber));
         $newBarberId = (int)$pdo->lastInsertId();
 
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
             }
 
-            $insBH = $pdo->prepare('INSERT OR REPLACE INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:brid,:wd,:o,:c,:cl)');
+            $insBH = $pdo->prepare('REPLACE INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:brid,:wd,:o,:c,:cl)');
             foreach ($baseHours as $h) {
                 $insBH->execute(array(
                     ':bid'=>$bizId,
@@ -140,8 +140,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ));
             }
 
-            // Barber hours: mismo patrón que business_hours
-            $insBR = $pdo->prepare('INSERT OR REPLACE INTO barber_hours (business_id, branch_id, barber_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:brid,:bar,:wd,:o,:c,:cl)');
+            // Profesional hours: mismo patrón que business_hours
+            $insBR = $pdo->prepare('REPLACE INTO barber_hours (business_id, branch_id, professional_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:brid,:bar,:wd,:o,:c,:cl)');
             foreach ($baseHours as $h) {
                 $insBR->execute(array(
                     ':bid'=>$bizId,
@@ -183,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $pdo->prepare('DELETE FROM barber_hours WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
             $pdo->prepare('DELETE FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
             $pdo->prepare('DELETE FROM business_hours WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
-            $pdo->prepare('DELETE FROM barbers WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
+            $pdo->prepare('DELETE FROM profesionales WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
             $pdo->prepare('DELETE FROM branches WHERE business_id=:bid AND id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
 
             if (!empty($_SESSION['branch_id']) && (int)$_SESSION['branch_id'] === $id) {
@@ -212,7 +212,7 @@ echo '<div class="cards-grid">';
 foreach ($branches as $b) {
     $hasAccess = in_array((int)$b['id'], $allowed, true);
     $sel = $hasAccess && (!empty($_SESSION['branch_id']) && (int)$_SESSION['branch_id'] === (int)$b['id']);
-    $counts = $pdo->prepare('SELECT COUNT(1) FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1');
+    $counts = $pdo->prepare('SELECT COUNT(1) FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1');
     $counts->execute(array(':bid'=>$bizId, ':brid'=>(int)$b['id']));
     $barberCount = (int)$counts->fetchColumn();
 

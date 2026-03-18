@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       foreach ($selBranches as $brid) {
         $brid = (int)$brid;
         if ($brid>0) {
-          $pdo->prepare("INSERT OR IGNORE INTO user_branch_access (business_id, user_id, branch_id) VALUES (:bid,:uid,:brid)")
+          $pdo->prepare("INSERT IGNORE INTO user_branch_access (business_id, user_id, branch_id) VALUES (:bid,:uid,:brid)")
             ->execute([':bid'=>$bizId, ':uid'=>$uid, ':brid'=>$brid]);
         }
       }
@@ -238,7 +238,7 @@ echo '<div class="card-title">Usuarios</div>';
       $branchesLabel = $names ? implode(', ', $names) : '—';
     }
     $perms = [];
-    foreach (['appointments','barbers','services','hours','blocks','settings','branches','analytics','system'] as $p) {
+    foreach (['appointments','profesionales','services','hours','blocks','settings','branches','analytics','system'] as $p) {
       $col = 'can_'.$p;
       if (!empty($u[$col])) $perms[] = $p;
     }

@@ -16,9 +16,9 @@ $pdo = db();
 
 $today = now_tz()->format('Y-m-d');
 
-$barbersStmt = $pdo->prepare('SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barbersStmt = $pdo->prepare('SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barbersStmt->execute([':bid' => $bid, ':brid' => $branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 
 $servicesStmt = $pdo->prepare('SELECT id, name, duration_minutes FROM services WHERE business_id=:bid AND is_active=1 ORDER BY id');
  $servicesStmt->execute(array(':bid' => $bid));
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $act = $_POST['act'] ?? '';
     try {
         if ($act==='create') {
-            $barberId = (int)($_POST['barber_id'] ?? 0);
+            $barberId = (int)($_POST['professional_id'] ?? 0);
             $startDate = trim($_POST['start_date']??'');
             $endDate = trim($_POST['end_date']??'');
             $startTime = trim($_POST['start_time']??'');
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
             if ($e <= $s) throw new RuntimeException('Fin debe ser mayor que inicio');
             $barberVal = $barberId > 0 ? $barberId : null;
-			$pdo->prepare('INSERT INTO blocks (business_id, branch_id, barber_id, start_at, end_at, reason) VALUES (:bid, :brid, :bar, :s, :e, :r)')
+			$pdo->prepare('INSERT INTO blocks (business_id, branch_id, professional_id, start_at, end_at, reason) VALUES (:bid, :brid, :bar, :s, :e, :r)')
 				->execute([':bid'=>$bid,':brid'=>$branchId,':bar'=>$barberVal,':s'=>$s->format('Y-m-d H:i:s'),':e'=>$e->format('Y-m-d H:i:s'),':r'=>$reason]);
             $notice='Bloqueo creado.';
         } elseif ($act==='delete') {
@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
 }
 
-$stmt=$pdo->prepare('SELECT bl.*, b.name AS barber_name FROM blocks bl LEFT JOIN barbers b ON b.id=bl.barber_id WHERE bl.business_id=:bid AND bl.branch_id=:brid ORDER BY bl.start_at DESC LIMIT 50');
+$stmt=$pdo->prepare('SELECT bl.*, b.name AS barber_name FROM blocks bl LEFT JOIN profesionales b ON b.id=bl.professional_id WHERE bl.business_id=:bid AND bl.branch_id=:brid ORDER BY bl.start_at DESC LIMIT 50');
 $stmt->execute([':bid' => $bid, ':brid' => $branchId]);
 $rows=$stmt->fetchAll()?:[];
 
@@ -85,9 +85,9 @@ admin_nav('blocks');
   <form method="post" class="row">
     <div>
       <label>Profesional</label>
-      <select name="barber_id">
+      <select name="professional_id">
         <option value="0">Global</option>
-        <?php foreach ($barbers as $b): ?>
+        <?php foreach ($profesionales as $b): ?>
           <option value="<?php echo (int)$b['id']; ?>"><?php echo h($b['name']); ?></option>
         <?php endforeach; ?>
       </select>

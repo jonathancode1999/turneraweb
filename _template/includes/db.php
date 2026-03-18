@@ -8,40 +8,198 @@ function app_config(): array {
     return $cfg;
 }
 
+function db_is_mysql(?PDO $pdo = null): bool {
+    try {
+        if ($pdo) return $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
+    } catch (Throwable $e) { /* ignore */ }
+    $cfg = app_config();
+    $driver = $cfg['db_driver'] ?? 'mysql';
+    return $driver === 'mysql';
+}
+
+function db_mysql_index_exists(PDO $pdo, string $table, string $indexName): bool {
+    $cfg = app_config();
+    $dbName = $cfg['mysql_db'] ?? ($cfg['db_name'] ?? '');
+    if (!$dbName) return false;
+    $stmt = $pdo->prepare("SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :t AND INDEX_NAME = :i");
+    $stmt->execute([':db' => $dbName, ':t' => $table, ':i' => $indexName]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo) return $pdo;
 
     $cfg = app_config();
+
+    // Default to mysql in production; sqlite remains supported for local/dev.
+    $driver = $cfg['db_driver'] ?? 'mysql';
+    if ($driver === 'mysql') {
+        $host = $cfg['mysql_host'] ?? '127.0.0.1';
+        $port = (int)($cfg['mysql_port'] ?? 3306);
+        $dbn  = $cfg['mysql_db'] ?? '';
+        $user = $cfg['mysql_user'] ?? '';
+        $pass = $cfg['mysql_pass'] ?? '';
+        $charset = $cfg['mysql_charset'] ?? 'utf8mb4';
+
+        $dsn = "mysql:host={$host};port={$port};dbname={$dbn};charset={$charset}";
+        $pdo = new PDO($dsn, $user, $pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+
+        migrate_if_needed($pdo); // MySQL schema bootstrap
+        return $pdo;
+    }
+
+    // SQLite fallback (dev only)
     $dsn = 'sqlite:' . $cfg['sqlite_path'];
 
-    // Ensure folder exists
     $dir = dirname($cfg['sqlite_path']);
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
+    if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
 
     $pdo = new PDO($dsn);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
     migrate_if_needed($pdo);
-    ensure_multibranch_schema($pdo);
-
-    // Opportunistic cleanup: expire old pending bookings
-    expire_pending_bookings($pdo);
-
     return $pdo;
 }
 
-// Helper: check table existence in SQLite
+// Helpers: table / column existence (works for both MySQL and SQLite)
 function db_table_exists(PDO $pdo, string $name): bool {
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    if ($driver === 'mysql') {
+        $st = $pdo->prepare(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t"
+        );
+        $st->execute([':t' => $name]);
+        return ((int)$st->fetchColumn()) > 0;
+    }
+
+    // SQLite
     $st = $pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:n LIMIT 1");
     $st->execute([':n' => $name]);
     return (bool)$st->fetchColumn();
 }
 
+function db_column_exists(PDO $pdo, string $table, string $column): bool {
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    if ($driver === 'mysql') {
+        $st = $pdo->prepare(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c"
+        );
+        $st->execute([':t' => $table, ':c' => $column]);
+        return ((int)$st->fetchColumn()) > 0;
+    }
+
+    // SQLite
+    $st = $pdo->prepare("PRAGMA table_info('" . str_replace("'","''",$table) . "')");
+    $st->execute();
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($rows as $r) {
+        if (isset($r['name']) && $r['name'] === $column) return true;
+    }
+    return false;
+}
+
 function ensure_multibranch_schema(PDO $pdo): void {
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+    // MySQL: use INFORMATION_SCHEMA checks (avoid SQLite-only PRAGMA/sqlite_master that would 500)
+    if ($driver === 'mysql') {
+        // Branches table
+        if (!db_table_exists($pdo, 'branches')) {
+            // migrate_if_needed() should have created it; keep a minimal safety net.
+            $pdo->exec("CREATE TABLE IF NOT EXISTS branches (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                business_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                address VARCHAR(255) DEFAULT '',
+                maps_url TEXT,
+                whatsapp_phone VARCHAR(64) DEFAULT '',
+                owner_email VARCHAR(255) DEFAULT '',
+                instagram_url TEXT,
+                logo_path VARCHAR(255) DEFAULT '',
+                cover_path VARCHAR(255) DEFAULT '',
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                whatsapp_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
+                whatsapp_reminder_minutes INT NOT NULL DEFAULT 1440,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        }
+
+        $branchAdds = [
+            'is_active' => "ALTER TABLE branches ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1",
+            'whatsapp_reminder_enabled' => "ALTER TABLE branches ADD COLUMN whatsapp_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0",
+            'whatsapp_reminder_minutes' => "ALTER TABLE branches ADD COLUMN whatsapp_reminder_minutes INT NOT NULL DEFAULT 1440",
+            'owner_email' => "ALTER TABLE branches ADD COLUMN owner_email VARCHAR(255) DEFAULT ''",
+            'logo_path' => "ALTER TABLE branches ADD COLUMN logo_path VARCHAR(255) DEFAULT ''",
+            'cover_path' => "ALTER TABLE branches ADD COLUMN cover_path VARCHAR(255) DEFAULT ''",
+        ];
+        foreach ($branchAdds as $col => $sql) {
+            if (!db_column_exists($pdo, 'branches', $col)) { $pdo->exec($sql); }
+        }
+
+        // Users table / permissions
+        if (db_table_exists($pdo, 'users')) {
+            $userAdds = [
+                'is_active' => "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1",
+                'all_branches' => "ALTER TABLE users ADD COLUMN all_branches TINYINT(1) NOT NULL DEFAULT 1",
+                'can_branches' => "ALTER TABLE users ADD COLUMN can_branches TINYINT(1) NOT NULL DEFAULT 1",
+                'can_settings' => "ALTER TABLE users ADD COLUMN can_settings TINYINT(1) NOT NULL DEFAULT 1",
+                'can_appointments' => "ALTER TABLE users ADD COLUMN can_appointments TINYINT(1) NOT NULL DEFAULT 1",
+                'can_barbers' => "ALTER TABLE users ADD COLUMN can_barbers TINYINT(1) NOT NULL DEFAULT 1",
+                'can_services' => "ALTER TABLE users ADD COLUMN can_services TINYINT(1) NOT NULL DEFAULT 1",
+                'can_hours' => "ALTER TABLE users ADD COLUMN can_hours TINYINT(1) NOT NULL DEFAULT 1",
+                'can_blocks' => "ALTER TABLE users ADD COLUMN can_blocks TINYINT(1) NOT NULL DEFAULT 1",
+                'can_system' => "ALTER TABLE users ADD COLUMN can_system TINYINT(1) NOT NULL DEFAULT 1",
+                'can_analytics' => "ALTER TABLE users ADD COLUMN can_analytics TINYINT(1) NOT NULL DEFAULT 1",
+            ];
+            foreach ($userAdds as $col => $sql) {
+                if (!db_column_exists($pdo, 'users', $col)) { $pdo->exec($sql); }
+            }
+
+            if (!db_table_exists($pdo, 'user_branch_access')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS user_branch_access (
+                    business_id INT NOT NULL,
+                    user_id INT NOT NULL,
+                    branch_id INT NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (business_id, user_id, branch_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+        }
+
+        // Core tables need branch_id
+        $tables = ['appointments','profesionales','blocks','business_hours','barber_hours','barber_timeoff','expenses'];
+        foreach ($tables as $t) {
+            if (db_table_exists($pdo, $t) && !db_column_exists($pdo, $t, 'branch_id')) {
+                $pdo->exec("ALTER TABLE {$t} ADD COLUMN branch_id INT NOT NULL DEFAULT 1");
+            }
+        }
+
+        
+
+// Ensure barber_hours UNIQUE index for upserts (MySQL)
+if (db_table_exists($pdo, 'barber_hours') && !db_mysql_index_exists($pdo, 'barber_hours', 'idx_bh_unique')) {
+    try {
+        $pdo->exec("ALTER TABLE barber_hours ADD UNIQUE KEY idx_bh_unique (business_id, branch_id, professional_id, weekday)");
+    } catch (Throwable $e) { /* ignore if already exists */ }
+}
+
+// Ensure blocks.reason column (used by quick blocks UI)
+if (db_table_exists($pdo, 'blocks') && !db_column_exists($pdo, 'blocks', 'reason')) {
+    try {
+        $pdo->exec("ALTER TABLE blocks ADD COLUMN reason TEXT");
+    } catch (Throwable $e) { /* ignore */ }
+}
+
+        return;
+    }
+
     // Defensive "healing" for partially migrated DBs:
     // ensure branches table + branch_id columns exist even if schema_version is already bumped.
     if (!db_table_exists($pdo, 'branches')) {
@@ -106,7 +264,7 @@ function ensure_multibranch_schema(PDO $pdo): void {
 
     // Ensure core tables have branch_id
     // NOTE: services are global per business (not per branch), so we DO NOT add branch_id to services.
-    $tables = array('appointments','barbers','blocks','business_hours','barber_hours','barber_timeoff');
+    $tables = array('appointments','profesionales','blocks','business_hours','barber_hours','barber_timeoff');
     foreach ($tables as $t) {
         if (!db_table_exists($pdo, $t)) continue;
         $cols = $pdo->query("PRAGMA table_info(" . $t . ")")->fetchAll();
@@ -217,7 +375,7 @@ function ensure_multibranch_schema(PDO $pdo): void {
   }
 
     // Ensure barber_hours has the correct UNIQUE constraint for multi-branch.
-    // Old schema used UNIQUE(business_id, barber_id, weekday) which breaks when a barber exists in multiple branches
+    // Old schema used UNIQUE(business_id, professional_id, weekday) which breaks when a profesional exists in multiple branches
     // and also breaks ON CONFLICT targets that include branch_id.
     if (db_table_exists($pdo, 'barber_hours')) {
         $needsRebuild = true;
@@ -231,7 +389,7 @@ function ensure_multibranch_schema(PDO $pdo): void {
                 $names = array();
                 foreach ($cols as $c) { $names[] = (string)$c['name']; }
                 // Accept either exact match or a superset that includes these 4 columns.
-                $want = array('business_id','branch_id','barber_id','weekday');
+                $want = array('business_id','branch_id','professional_id','weekday');
                 $ok = true;
                 foreach ($want as $w) { if (!in_array($w, $names, true)) { $ok = false; break; } }
                 if ($ok) { $needsRebuild = false; break; }
@@ -248,12 +406,12 @@ function ensure_multibranch_schema(PDO $pdo): void {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     business_id INTEGER NOT NULL,
                     branch_id INTEGER NOT NULL DEFAULT 1,
-                    barber_id INTEGER NOT NULL,
+                    professional_id INTEGER NOT NULL,
                     weekday INTEGER NOT NULL,
                     open_time TEXT NOT NULL,
                     close_time TEXT NOT NULL,
                     is_closed INTEGER NOT NULL DEFAULT 0,
-                    UNIQUE(business_id, branch_id, barber_id, weekday)
+                    UNIQUE(business_id, branch_id, professional_id, weekday)
                 )");
 
                 // Copy data. If old table lacks branch_id, default to 1.
@@ -261,11 +419,11 @@ function ensure_multibranch_schema(PDO $pdo): void {
                 $hasBranch = false;
                 foreach ($cols as $c) { if ($c['name'] === 'branch_id') { $hasBranch = true; break; } }
                 if ($hasBranch) {
-                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed)
-                               SELECT id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed FROM barber_hours");
+                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed)
+                               SELECT id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed FROM barber_hours");
                 } else {
-                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed)
-                               SELECT id,business_id,1,barber_id,weekday,open_time,close_time,is_closed FROM barber_hours");
+                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed)
+                               SELECT id,business_id,1,professional_id,weekday,open_time,close_time,is_closed FROM barber_hours");
                 }
 
                 $pdo->exec("DROP TABLE barber_hours");
@@ -279,8 +437,8 @@ function ensure_multibranch_schema(PDO $pdo): void {
     }
 
     // barber_hours: for multi-branch we need the UNIQUE constraint to include branch_id.
-    // Older DBs may have UNIQUE(business_id, barber_id, weekday) which prevents using the same
-    // barber_id across branches and also breaks inserts in the admin.
+    // Older DBs may have UNIQUE(business_id, professional_id, weekday) which prevents using the same
+    // professional_id across branches and also breaks inserts in the admin.
     if (db_table_exists($pdo, 'barber_hours')) {
         $needRebuild = false;
         try {
@@ -293,7 +451,7 @@ function ensure_multibranch_schema(PDO $pdo): void {
                 $names = array();
                 foreach ($cols as $c) { $names[] = (string)$c['name']; }
                 // exact order we expect
-                if ($names === array('business_id','branch_id','barber_id','weekday')) {
+                if ($names === array('business_id','branch_id','professional_id','weekday')) {
                     $foundUnique = true;
                     break;
                 }
@@ -312,12 +470,12 @@ function ensure_multibranch_schema(PDO $pdo): void {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     business_id INTEGER NOT NULL,
                     branch_id INTEGER NOT NULL DEFAULT 1,
-                    barber_id INTEGER NOT NULL,
+                    professional_id INTEGER NOT NULL,
                     weekday INTEGER NOT NULL,
                     open_time TEXT NOT NULL,
                     close_time TEXT NOT NULL,
                     is_closed INTEGER NOT NULL DEFAULT 0,
-                    UNIQUE(business_id, branch_id, barber_id, weekday)
+                    UNIQUE(business_id, branch_id, professional_id, weekday)
                 )");
 
                 // Copy rows (branch_id may not exist in old table; default to 1)
@@ -325,11 +483,11 @@ function ensure_multibranch_schema(PDO $pdo): void {
                 $hasBranch = false;
                 foreach ($cols as $c) { if ($c['name'] === 'branch_id') { $hasBranch = true; break; } }
                 if ($hasBranch) {
-                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed)
-                               SELECT id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed FROM barber_hours");
+                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed)
+                               SELECT id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed FROM barber_hours");
                 } else {
-                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,barber_id,weekday,open_time,close_time,is_closed)
-                               SELECT id,business_id,1,barber_id,weekday,open_time,close_time,is_closed FROM barber_hours");
+                    $pdo->exec("INSERT OR IGNORE INTO barber_hours_new (id,business_id,branch_id,professional_id,weekday,open_time,close_time,is_closed)
+                               SELECT id,business_id,1,professional_id,weekday,open_time,close_time,is_closed FROM barber_hours");
                 }
 
                 $pdo->exec('DROP TABLE barber_hours');
@@ -385,6 +543,338 @@ function ensure_multibranch_schema(PDO $pdo): void {
 
 
 function migrate_if_needed(PDO $pdo): void {
+    // Detect driver
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+    // Helpers for MySQL "add column if missing" (avoid breaking existing installs)
+    $mysql_column_exists = function(PDO $pdo, string $table, string $column): bool {
+        try {
+            $st = $pdo->prepare(
+                "SELECT COUNT(*)
+                 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = :t
+                   AND COLUMN_NAME = :c"
+            );
+            $st->execute([':t' => $table, ':c' => $column]);
+            return ((int)$st->fetchColumn()) > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    };
+
+    if ($driver === 'mysql') {
+        // Create schema (idempotent)
+        $sql = "
+CREATE TABLE IF NOT EXISTS meta (
+  `key` VARCHAR(190) PRIMARY KEY,
+  `value` TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS businesses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  owner_email VARCHAR(255) DEFAULT '',
+  address VARCHAR(255) DEFAULT '',
+  maps_url TEXT,
+  whatsapp_phone VARCHAR(64) DEFAULT '',
+  logo_path VARCHAR(255) DEFAULT '',
+  cover_path VARCHAR(255) DEFAULT '',
+  instagram_url TEXT,
+  intro_text TEXT,
+  timezone VARCHAR(64) DEFAULT 'America/Argentina/Buenos_Aires',
+  slot_minutes INT NOT NULL DEFAULT 15,
+  slot_capacity INT NOT NULL DEFAULT 1,
+  cancel_notice_minutes INT NOT NULL DEFAULT 0,
+  pay_deadline_minutes INT NOT NULL DEFAULT 0,
+  payment_mode VARCHAR(16) NOT NULL DEFAULT 'OFF',
+  deposit_percent_default INT NOT NULL DEFAULT 30,
+  mp_connected TINYINT(1) NOT NULL DEFAULT 0,
+  mp_user_id VARCHAR(64) DEFAULT '',
+  mp_access_token TEXT,
+  mp_refresh_token TEXT,
+  mp_token_expires_at DATETIME NULL,
+  customer_choose_barber TINYINT(1) NOT NULL DEFAULT 1,
+  smtp_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  smtp_host VARCHAR(255) DEFAULT '',
+  smtp_port INT DEFAULT 587,
+  smtp_user VARCHAR(255) DEFAULT '',
+  smtp_pass VARCHAR(255) DEFAULT '',
+  smtp_secure VARCHAR(16) DEFAULT '',
+  smtp_from_email VARCHAR(255) DEFAULT '',
+  smtp_from_name VARCHAR(255) DEFAULT '',
+  public_base_url TEXT,
+  theme_primary VARCHAR(16) DEFAULT '#2563eb',
+  theme_accent VARCHAR(16) DEFAULT '#2563eb',
+  reminder_minutes INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS branches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  address VARCHAR(255) DEFAULT '',
+  maps_url TEXT,
+  whatsapp_phone VARCHAR(64) DEFAULT '',
+  owner_email VARCHAR(255) DEFAULT '',
+  instagram_url TEXT,
+  logo_path VARCHAR(255) DEFAULT '',
+  cover_path VARCHAR(255) DEFAULT '',
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  whatsapp_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  whatsapp_reminder_minutes INT NOT NULL DEFAULT 1440,
+  smtp_host VARCHAR(255) DEFAULT '',
+  smtp_port INT NOT NULL DEFAULT 587,
+  smtp_user VARCHAR(255) DEFAULT '',
+  smtp_pass VARCHAR(255) DEFAULT '',
+  smtp_secure VARCHAR(16) DEFAULT '',
+  smtp_from_email VARCHAR(255) DEFAULT '',
+  smtp_from_name VARCHAR(255) DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_br_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+  INDEX idx_br_business (business_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(32) NOT NULL DEFAULT 'admin',
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  all_branches TINYINT(1) NOT NULL DEFAULT 1,
+  can_branches TINYINT(1) NOT NULL DEFAULT 1,
+  can_settings TINYINT(1) NOT NULL DEFAULT 1,
+  can_appointments TINYINT(1) NOT NULL DEFAULT 1,
+  can_barbers TINYINT(1) NOT NULL DEFAULT 1,
+  can_services TINYINT(1) NOT NULL DEFAULT 1,
+  can_hours TINYINT(1) NOT NULL DEFAULT 1,
+  can_blocks TINYINT(1) NOT NULL DEFAULT 1,
+  can_system TINYINT(1) NOT NULL DEFAULT 1,
+  can_analytics TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_users (business_id, username),
+  CONSTRAINT fk_users_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_branch_access (
+  business_id INT NOT NULL,
+  user_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (business_id, user_id, branch_id),
+  INDEX idx_uba_user (user_id),
+  INDEX idx_uba_branch (branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS services (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  duration_minutes INT NOT NULL,
+  price_ars INT NOT NULL DEFAULT 0,
+  deposit_percent_override INT NULL,
+  image_url TEXT,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  avatar_path VARCHAR(255) DEFAULT '',
+  cover_path VARCHAR(255) DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_services_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+  INDEX idx_services_business (business_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profesionales (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 1,
+  name VARCHAR(255) NOT NULL,
+  capacity INT NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  avatar_path VARCHAR(255) DEFAULT '',
+  cover_path VARCHAR(255) DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_barbers_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+  INDEX idx_barbers_business (business_id),
+  INDEX idx_barbers_branch (branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS service_profesionales (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 1,
+  service_id INT NOT NULL,
+  professional_id INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_service_barber (business_id, branch_id, service_id, professional_id),
+  INDEX idx_sb_service (service_id),
+  INDEX idx_sb_barber (professional_id),
+  CONSTRAINT fk_sb_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS business_hours (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 1,
+  weekday INT NOT NULL, -- 0=Sun .. 6=Sat
+  open_time VARCHAR(8) DEFAULT NULL,
+  close_time VARCHAR(8) DEFAULT NULL,
+  is_closed TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_bh (business_id, branch_id, weekday),
+  CONSTRAINT fk_bh_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS blocks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 1,
+  professional_id INT DEFAULT NULL,
+  title VARCHAR(255) DEFAULT '',
+  start_at DATETIME NOT NULL,
+  end_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_blocks_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+  INDEX idx_blocks_range (business_id, branch_id, start_at, end_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 1,
+  professional_id INT NOT NULL,
+  service_id INT NOT NULL,
+  customer_name VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(64) NOT NULL,
+  customer_email VARCHAR(255) DEFAULT '',
+  notes TEXT,
+  start_at DATETIME NOT NULL,
+  end_at DATETIME NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  token VARCHAR(64) NOT NULL,
+  requested_start_at DATETIME NULL,
+  requested_end_at DATETIME NULL,
+  requested_at DATETIME NULL,
+  requested_professional_id INT NULL,
+  requested_service_id INT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  cancelled_at DATETIME NULL,
+  reminder_sent_at DATETIME NULL,
+  reminder_skipped_at DATETIME NULL,
+  payment_status VARCHAR(16) NOT NULL DEFAULT 'none',
+  payment_mode VARCHAR(16) NOT NULL DEFAULT 'none',
+  payment_amount_ars INT NOT NULL DEFAULT 0,
+  payment_expires_at DATETIME NULL,
+  mp_preference_id VARCHAR(255) DEFAULT '',
+  mp_payment_id VARCHAR(255) DEFAULT '',
+  paid_at DATETIME NULL,
+  reminder_last_error TEXT,
+  UNIQUE KEY uq_token (business_id, token),
+  INDEX idx_appt_range (business_id, branch_id, start_at, end_at),
+  INDEX idx_appt_status (business_id, status),
+  CONSTRAINT fk_appt_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL DEFAULT 0,
+  expense_date DATE NOT NULL,
+  category VARCHAR(80) NOT NULL,
+  description VARCHAR(255) NOT NULL DEFAULT '',
+  amount_ars INT NOT NULL DEFAULT 0,
+  is_recurring TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_expenses_biz_date (business_id, expense_date),
+  INDEX idx_expenses_branch (business_id, branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+";
+        foreach (explode(";", $sql) as $stmt) {
+            $stmt = trim($stmt);
+            if ($stmt === '') continue;
+            $pdo->exec($stmt);
+        }
+
+        // Backward-compatible patches for older MySQL installs
+        // (tables created before we added some columns required by the multi-branch UI)
+        if (!$mysql_column_exists($pdo, 'branches', 'is_active')) {
+            try { $pdo->exec("ALTER TABLE branches ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1"); } catch (Throwable $e) {}
+        }
+        if (!$mysql_column_exists($pdo, 'users', 'is_active')) {
+            try { $pdo->exec("ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1"); } catch (Throwable $e) {}
+        }
+        if (!$mysql_column_exists($pdo, 'users', 'all_branches')) {
+            try { $pdo->exec("ALTER TABLE users ADD COLUMN all_branches TINYINT(1) NOT NULL DEFAULT 1"); } catch (Throwable $e) {}
+        }
+        // Permissions columns (used when role != admin)
+        $permCols = [
+            'can_branches' => 0,
+            'can_settings' => 0,
+            'can_appointments' => 1,
+            'can_barbers' => 0,
+            'can_services' => 0,
+            'can_hours' => 0,
+            'can_blocks' => 0,
+            'can_system' => 0,
+            'can_analytics' => 0,
+        ];
+        foreach ($permCols as $col => $def) {
+            if (!$mysql_column_exists($pdo, 'users', $col)) {
+                try { $pdo->exec("ALTER TABLE users ADD COLUMN {$col} TINYINT(1) NOT NULL DEFAULT {$def}"); } catch (Throwable $e) {}
+            }
+        }
+        // Many-to-many user ↔ branches (when all_branches=0)
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS user_branch_access (
+                business_id INT NOT NULL,
+                user_id INT NOT NULL,
+                branch_id INT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (business_id, user_id, branch_id),
+                INDEX idx_uba_user (business_id, user_id),
+                INDEX idx_uba_branch (business_id, branch_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        } catch (Throwable $e) {}
+
+        // Ensure a default business exists for demos (business_id=1)
+        $cfg = app_config();
+        $bid = (int)($cfg['business_id'] ?? 1);
+
+        $exists = $pdo->prepare("SELECT id FROM businesses WHERE id=?");
+        $exists->execute([$bid]);
+        if (!$exists->fetch()) {
+            $ins = $pdo->prepare("INSERT INTO businesses (id, name, timezone, slot_minutes, slot_capacity, payment_mode, deposit_percent_default) VALUES (?,?,?,?,?,?,?)");
+            $ins->execute([$bid, 'Turnera Demo', ($cfg['timezone'] ?? 'America/Argentina/Buenos_Aires'), (int)($cfg['slot_minutes'] ?? 15), 1, 'OFF', 30]);
+
+            // Default branch
+            $pdo->prepare("INSERT INTO branches (business_id, name) VALUES (?,?)")->execute([$bid, 'Sucursal Principal']);
+
+            // Default admin user (username: admin, password: 1234) only for demo
+            $hash = password_hash('1234', PASSWORD_BCRYPT);
+            $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (?,?,?,?)")
+                ->execute([$bid, 'admin', $hash, 'admin']);
+
+            // Default hours: Mon-Sat 09-19, Sun closed
+            for ($wd = 0; $wd <= 6; $wd++) {
+                $isClosed = ($wd === 0) ? 1 : 0;
+                $open = ($isClosed ? null : '09:00');
+                $close = ($isClosed ? null : '19:00');
+                $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (?,?,?,?,?,?)")
+                    ->execute([$bid, 1, $wd, $open, $close, $isClosed]);
+            }
+        }
+
+        return;
+    }
+
+    // SQLite original migrator (legacy)
     $pdo->exec('PRAGMA foreign_keys = ON');
 
     // meta schema compatibility (older installs used columns k/v)
@@ -393,7 +883,6 @@ function migrate_if_needed(PDO $pdo): void {
     $haveMeta = array();
     foreach ($metaCols as $c) { $haveMeta[$c['name']] = true; }
     if (!isset($haveMeta['value']) && isset($haveMeta['v'])) {
-        // Migrate k/v -> key/value
         $pdo->beginTransaction();
         try {
             $pdo->exec("ALTER TABLE meta RENAME TO meta_old");
@@ -403,529 +892,18 @@ function migrate_if_needed(PDO $pdo): void {
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
-            throw $e;
         }
     }
 
-    $version = (int)($pdo->query("SELECT value FROM meta WHERE key='schema_version'")->fetchColumn() ?: 0);
-    if ($version >= 12) return;
-
-    // Fresh install
-    if ($version <= 0) {
-        $schema = file_get_contents(__DIR__ . '/../schema.sql');
-        if ($schema === false) {
-            throw new RuntimeException('Missing schema.sql');
+    // Run schema.sql (SQLite)
+    $schemaPath = __DIR__ . '/../schema.sql';
+    if (file_exists($schemaPath)) {
+        $sql = file_get_contents($schemaPath);
+        foreach (explode(';', $sql) as $stmt) {
+            $stmt = trim($stmt);
+            if ($stmt === '' || stripos($stmt, 'PRAGMA') === 0) continue;
+            $pdo->exec($stmt);
         }
-        $pdo->beginTransaction();
-        try {
-            $pdo->exec($schema);
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','12')")->execute();
-            // Seed demo data only when marker file exists (demo site)
-            if (file_exists(__DIR__ . '/../.demo_seed')) {
-                seed_demo_data($pdo);
-            }
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v1 -> v2 (service description + image)
-    if ($version === 1) {
-        $pdo->beginTransaction();
-        try {
-            // SQLite supports ADD COLUMN
-            $pdo->exec("ALTER TABLE services ADD COLUMN description TEXT DEFAULT ''");
-            $pdo->exec("ALTER TABLE services ADD COLUMN image_url TEXT DEFAULT ''");
-            $pdo->prepare("UPDATE services SET description = COALESCE(description,'')")->execute();
-            $pdo->prepare("UPDATE services SET image_url = COALESCE(image_url,'')")->execute();
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','2')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v2 -> v3 (barbers + gallery + per-barber blocks/appointments)
-    if ($version === 2) {
-        $pdo->beginTransaction();
-        try {
-            // Staff
-            $pdo->exec("CREATE TABLE IF NOT EXISTS barbers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE
-            )");
-
-            $pdo->exec("CREATE TABLE IF NOT EXISTS barber_hours (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_id INTEGER NOT NULL,
-                barber_id INTEGER NOT NULL,
-                weekday INTEGER NOT NULL,
-                open_time TEXT,
-                close_time TEXT,
-                is_closed INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(business_id, barber_id, weekday),
-                FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE,
-                FOREIGN KEY(barber_id) REFERENCES barbers(id) ON DELETE CASCADE
-            )");
-
-            $pdo->exec("CREATE TABLE IF NOT EXISTS barber_timeoff (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_id INTEGER NOT NULL,
-                barber_id INTEGER NOT NULL,
-                start_date TEXT NOT NULL,
-                end_date TEXT NOT NULL,
-                reason TEXT DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE,
-                FOREIGN KEY(barber_id) REFERENCES barbers(id) ON DELETE CASCADE
-            )");
-
-            // Gallery
-            $pdo->exec("CREATE TABLE IF NOT EXISTS gallery_images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_id INTEGER NOT NULL,
-                file_path TEXT NOT NULL,
-                caption TEXT DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(business_id) REFERENCES businesses(id) ON DELETE CASCADE
-            )");
-
-            // Add barber_id to blocks if missing
-            $cols = $pdo->query("PRAGMA table_info(blocks)")->fetchAll();
-            $hasBarber = false;
-            foreach ($cols as $c) if (($c['name'] ?? '') === 'barber_id') { $hasBarber = true; break; }
-            if (!$hasBarber) {
-                $pdo->exec("ALTER TABLE blocks ADD COLUMN barber_id INTEGER");
-            }
-
-            // Add barber_id to appointments if missing
-            $cols = $pdo->query("PRAGMA table_info(appointments)")->fetchAll();
-            $hasBarber = false;
-            foreach ($cols as $c) if (($c['name'] ?? '') === 'barber_id') { $hasBarber = true; break; }
-            if (!$hasBarber) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN barber_id INTEGER NOT NULL DEFAULT 1");
-            }
-
-            // Ensure index exists
-            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_appt_business_barber_start ON appointments(business_id, barber_id, start_at)");
-
-            // Seed demo barbers if none
-            $cnt = (int)($pdo->query("SELECT COUNT(*) FROM barbers WHERE business_id=1")->fetchColumn() ?: 0);
-            if ($cnt === 0) {
-                $pdo->exec("INSERT INTO barbers (business_id, name, is_active) VALUES (1,'Profesional 1',1), (1,'Profesional 2',1)");
-                // Copy business hours into each barber
-                $bh = $pdo->query("SELECT weekday, open_time, close_time, is_closed FROM business_hours WHERE business_id=1")->fetchAll();
-                $barbers = $pdo->query("SELECT id FROM barbers WHERE business_id=1 ORDER BY id")->fetchAll();
-                $ins = $pdo->prepare("INSERT OR REPLACE INTO barber_hours (business_id, barber_id, weekday, open_time, close_time, is_closed)
-                                      VALUES (1,:bid,:w,:o,:c,:closed)");
-                foreach ($barbers as $b) {
-                    foreach ($bh as $h) {
-                        $ins->execute([
-                            ':bid' => (int)$b['id'],
-                            ':w' => (int)$h['weekday'],
-                            ':o' => $h['open_time'],
-                            ':c' => $h['close_time'],
-                            ':closed' => (int)$h['is_closed'],
-                        ]);
-                    }
-                }
-            }
-
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','3')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v3 -> v4 (business settings + barber capacity)
-    if ($version === 3) {
-        $pdo->beginTransaction();
-        try {
-            // businesses: gallery title, maps url, slot capacity
-            $cols = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-            if (!isset($have['gallery_title'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN gallery_title TEXT DEFAULT 'Nuestros trabajos'");
-            }
-            if (!isset($have['maps_url'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN maps_url TEXT DEFAULT ''");
-            }
-            if (!isset($have['slot_capacity'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN slot_capacity INTEGER NOT NULL DEFAULT 1");
-            }
-
-            // barbers capacity
-            $cols = $pdo->query("PRAGMA table_info(barbers)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-            if (!isset($have['capacity'])) {
-                $pdo->exec("ALTER TABLE barbers ADD COLUMN capacity INTEGER NOT NULL DEFAULT 1");
-            }
-
-            // Ensure sane defaults
-            $pdo->exec("UPDATE businesses SET gallery_title = COALESCE(gallery_title,'Nuestros trabajos') WHERE id=1");
-            $pdo->exec("UPDATE businesses SET slot_capacity = CASE WHEN slot_capacity IS NULL OR slot_capacity < 1 THEN 1 ELSE slot_capacity END");
-            $pdo->exec("UPDATE barbers SET capacity = CASE WHEN capacity IS NULL OR capacity < 1 THEN 1 ELSE capacity END");
-
-    $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','5')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v4 -> v5 (customer_choose_barber)
-    if ($version === 4) {
-        $pdo->beginTransaction();
-        try {
-            $cols = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-            if (!isset($have['customer_choose_barber'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN customer_choose_barber INTEGER NOT NULL DEFAULT 1");
-            }
-            $pdo->exec("UPDATE businesses SET customer_choose_barber = CASE WHEN customer_choose_barber IS NULL THEN 1 ELSE customer_choose_barber END");
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','5')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-
-    // Upgrade v5 -> v6 (branding + email + reprogramación + customer_email)
-    if ($version === 5) {
-        $pdo->beginTransaction();
-        try {
-            $cols = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-            if (!isset($have['logo_path'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN logo_path TEXT DEFAULT ''");
-            }
-            if (!isset($have['owner_email'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN owner_email TEXT DEFAULT ''");
-            }
-            $pdo->exec("UPDATE businesses SET logo_path = COALESCE(logo_path,'') WHERE id=1");
-
-            // appointments: customer_email + requested_* fields
-            $colsA = $pdo->query("PRAGMA table_info(appointments)")->fetchAll();
-            $haveA = [];
-            foreach ($colsA as $c) { $haveA[$c['name']] = true; }
-            if (!isset($haveA['customer_email'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN customer_email TEXT DEFAULT ''");
-            }
-            if (!isset($haveA['requested_start_at'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN requested_start_at TEXT");
-            }
-            if (!isset($haveA['requested_end_at'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN requested_end_at TEXT");
-            }
-            if (!isset($haveA['requested_at'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN requested_at TEXT");
-            }
-
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','6')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-
-    // Upgrade v6 -> v7 (reprogramación con cambio de profesional/servicio)
-    if ($version === 6) {
-        $pdo->beginTransaction();
-        try {
-            $colsA = $pdo->query("PRAGMA table_info(appointments)")->fetchAll();
-            $haveA = [];
-            foreach ($colsA as $c) { $haveA[$c['name']] = true; }
-
-            if (!isset($haveA['requested_barber_id'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN requested_barber_id INTEGER");
-            }
-            if (!isset($haveA['requested_service_id'])) {
-                $pdo->exec("ALTER TABLE appointments ADD COLUMN requested_service_id INTEGER");
-            }
-
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','7')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v7 -> v8 (cancel window + SMTP settings)
-    if ($version === 7) {
-        $pdo->beginTransaction();
-        try {
-            $cols = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-            if (!isset($have['cancel_notice_minutes'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN cancel_notice_minutes INTEGER NOT NULL DEFAULT 0");
-            }
-            if (!isset($have['smtp_enabled'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_enabled INTEGER NOT NULL DEFAULT 0");
-            }
-            if (!isset($have['smtp_host'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_host TEXT DEFAULT ''");
-            }
-            if (!isset($have['smtp_port'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_port INTEGER DEFAULT 587");
-            }
-            if (!isset($have['smtp_user'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_user TEXT DEFAULT ''");
-            }
-            if (!isset($have['smtp_pass'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_pass TEXT DEFAULT ''");
-            }
-            if (!isset($have['smtp_secure'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_secure TEXT DEFAULT ''");
-            }
-            if (!isset($have['smtp_from_email'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_from_email TEXT DEFAULT ''");
-            }
-            if (!isset($have['smtp_from_name'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN smtp_from_name TEXT DEFAULT ''");
-            }
-
-            $pdo->exec("UPDATE businesses SET cancel_notice_minutes = CASE WHEN cancel_notice_minutes IS NULL OR cancel_notice_minutes < 0 THEN 0 ELSE cancel_notice_minutes END");
-            $pdo->exec("UPDATE businesses SET smtp_enabled = CASE WHEN smtp_enabled IS NULL THEN 0 ELSE smtp_enabled END");
-            $pdo->exec("UPDATE businesses SET smtp_host = COALESCE(smtp_host,'')");
-
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','8')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v8 -> v9 (portada + instagram + descripción)
-    if ($version === 8) {
-        $pdo->beginTransaction();
-        try {
-            $cols = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $have = [];
-            foreach ($cols as $c) { $have[$c['name']] = true; }
-
-            if (!isset($have['cover_path'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN cover_path TEXT DEFAULT ''");
-            }
-            if (!isset($have['instagram_url'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN instagram_url TEXT DEFAULT ''");
-            }
-            if (!isset($have['intro_text'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN intro_text TEXT DEFAULT ''");
-            }
-
-            $pdo->exec("UPDATE businesses SET cover_path = COALESCE(cover_path,'')");
-            $pdo->exec("UPDATE businesses SET instagram_url = COALESCE(instagram_url,'')");
-            $pdo->exec("UPDATE businesses SET intro_text = COALESCE(intro_text,'')");
-
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','9')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v9 -> v10 (unificar estados + sacar galería + fotos profesionales + URL pública)
-    if ($version === 9) {
-        $pdo->beginTransaction();
-        try {
-            // 1) Normalizar estados legacy
-            $pdo->exec("UPDATE appointments SET status='ACEPTADO' WHERE status IN ('CONFIRMADO')");
-
-            // 2) Barbers: avatar/cover
-            $colsB = $pdo->query("PRAGMA table_info(barbers)")->fetchAll();
-            $haveB = [];
-            foreach ($colsB as $c) { $haveB[$c['name']] = true; }
-            if (!isset($haveB['avatar_path'])) {
-                $pdo->exec("ALTER TABLE barbers ADD COLUMN avatar_path TEXT DEFAULT ''");
-            }
-            if (!isset($haveB['cover_path'])) {
-                $pdo->exec("ALTER TABLE barbers ADD COLUMN cover_path TEXT DEFAULT ''");
-            }
-            $pdo->exec("UPDATE barbers SET avatar_path = COALESCE(avatar_path,'')");
-            $pdo->exec("UPDATE barbers SET cover_path = COALESCE(cover_path,'')");
-
-            // 3) Businesses: public_base_url (para links de gestión en emails)
-            $colsBiz = $pdo->query("PRAGMA table_info(businesses)")->fetchAll();
-            $haveBiz = [];
-            foreach ($colsBiz as $c) { $haveBiz[$c['name']] = true; }
-            if (!isset($haveBiz['public_base_url'])) {
-                $pdo->exec("ALTER TABLE businesses ADD COLUMN public_base_url TEXT DEFAULT ''");
-            }
-            $pdo->exec("UPDATE businesses SET public_base_url = COALESCE(public_base_url,'')");
-
-	            // 4) Eliminar galería por completo
-	            $pdo->exec("DROP TABLE IF EXISTS gallery_images");
-	            // Si quedó una migración vieja a mitad, limpiamos cualquier tabla auxiliar.
-	            $pdo->exec("DROP TABLE IF EXISTS businesses_old");
-	            $pdo->exec("DROP TABLE IF EXISTS businesses_new");
-
-	            // SQLite no soporta DROP COLUMN: si existe gallery_title, reconstruimos la tabla businesses.
-	            // IMPORTANTÍSIMO: NO dependemos de businesses_old (puede no existir aunque el schema_version sea 9).
-	            if (db_table_exists($pdo, 'businesses') && isset($haveBiz['gallery_title'])) {
-	                $pdo->exec("CREATE TABLE businesses_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    owner_email TEXT DEFAULT '',
-                    address TEXT DEFAULT '',
-                    maps_url TEXT DEFAULT '',
-                    whatsapp_phone TEXT DEFAULT '',
-                    logo_path TEXT DEFAULT '',
-                    cover_path TEXT DEFAULT '',
-                    instagram_url TEXT DEFAULT '',
-                    intro_text TEXT DEFAULT '',
-                    timezone TEXT DEFAULT 'America/Argentina/Buenos_Aires',
-                    slot_minutes INTEGER NOT NULL DEFAULT 30,
-                    slot_capacity INTEGER NOT NULL DEFAULT 1,
-                    cancel_notice_minutes INTEGER NOT NULL DEFAULT 0,
-customer_choose_barber INTEGER NOT NULL DEFAULT 1,
-                    smtp_enabled INTEGER NOT NULL DEFAULT 0,
-                    smtp_host TEXT DEFAULT '',
-                    smtp_port INTEGER NOT NULL DEFAULT 587,
-                    smtp_user TEXT DEFAULT '',
-                    smtp_pass TEXT DEFAULT '',
-                    smtp_secure TEXT DEFAULT '',
-                    smtp_from_email TEXT DEFAULT '',
-                    smtp_from_name TEXT DEFAULT '',
-                    public_base_url TEXT DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-	                )");
-
-	                // Copiamos datos desde businesses (ignorando gallery_title)
-	                $pdo->exec("INSERT INTO businesses_new (
-                        id,name,owner_email,address,maps_url,whatsapp_phone,logo_path,cover_path,instagram_url,intro_text,timezone,
-                        slot_minutes,slot_capacity,cancel_notice_minutes,customer_choose_barber,
-                        smtp_enabled,smtp_host,smtp_port,smtp_user,smtp_pass,smtp_secure,smtp_from_email,smtp_from_name,public_base_url,created_at
-                    )
-                    SELECT
-                        id,name,owner_email,address,maps_url,whatsapp_phone,logo_path,cover_path,instagram_url,intro_text,timezone,
-                        slot_minutes,slot_capacity,cancel_notice_minutes,customer_choose_barber,
-                        smtp_enabled,smtp_host,smtp_port,smtp_user,smtp_pass,smtp_secure,smtp_from_email,smtp_from_name,public_base_url,created_at
-                    FROM businesses");
-
-	                $pdo->exec("DROP TABLE businesses");
-	                $pdo->exec("ALTER TABLE businesses_new RENAME TO businesses");
-	            }
-
-	            // Si por algún motivo businesses no existe (DB rota / incompleta), la recreamos mínima.
-	            if (!db_table_exists($pdo, 'businesses')) {
-	                $pdo->exec("CREATE TABLE IF NOT EXISTS businesses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    owner_email TEXT DEFAULT '',
-                    address TEXT DEFAULT '',
-                    maps_url TEXT DEFAULT '',
-                    whatsapp_phone TEXT DEFAULT '',
-                    logo_path TEXT DEFAULT '',
-                    cover_path TEXT DEFAULT '',
-                    instagram_url TEXT DEFAULT '',
-                    intro_text TEXT DEFAULT '',
-                    timezone TEXT DEFAULT 'America/Argentina/Buenos_Aires',
-                    slot_minutes INTEGER NOT NULL DEFAULT 30,
-                    slot_capacity INTEGER NOT NULL DEFAULT 1,
-                    cancel_notice_minutes INTEGER NOT NULL DEFAULT 0,
-customer_choose_barber INTEGER NOT NULL DEFAULT 1,
-                    smtp_enabled INTEGER NOT NULL DEFAULT 0,
-                    smtp_host TEXT DEFAULT '',
-                    smtp_port INTEGER NOT NULL DEFAULT 587,
-                    smtp_user TEXT DEFAULT '',
-                    smtp_pass TEXT DEFAULT '',
-                    smtp_secure TEXT DEFAULT '',
-                    smtp_from_email TEXT DEFAULT '',
-                    smtp_from_name TEXT DEFAULT '',
-                    public_base_url TEXT DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-	                )");
-	                // Seed mínimo para que la app funcione.
-	                $pdo->exec("INSERT OR IGNORE INTO businesses(id,name,timezone,slot_minutes) VALUES(1,'Turnera Demo','America/Argentina/Buenos_Aires',30)");
-	            }
-
-$pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','10')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v10 -> v11 (recordatorios por email)
-    if ($version === 10) {
-        $pdo->beginTransaction();
-        try {
-            if (db_table_exists($pdo, 'appointments')) {
-                $colsA = $pdo->query("PRAGMA table_info(appointments)")->fetchAll();
-                $haveA = [];
-                foreach ($colsA as $c) { $haveA[$c['name']] = true; }
-                if (!isset($haveA['reminder_sent_at'])) {
-                    $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_sent_at TEXT");
-                }
-                if (!isset($haveA['reminder_last_error'])) {
-                    $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_last_error TEXT");
-                }
-                $pdo->exec("UPDATE appointments SET reminder_sent_at = COALESCE(reminder_sent_at, NULL)");
-                $pdo->exec("UPDATE appointments SET reminder_last_error = COALESCE(reminder_last_error, NULL)");
-            }
-
-            // Dejamos la DB en v11 para que en la próxima carga corra la migración v11->v12.
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','12')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Upgrade v11 -> v12 (multi-sucursal)
-    if ($version === 11) {
-        $pdo->beginTransaction();
-        try {
-            ensure_multibranch_schema($pdo);
-            $pdo->prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','12')")->execute();
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        return;
-    }
-
-    // Repair (idempotente): si la DB quedó marcada como v12 pero faltan columnas/tablas.
-    if ($version >= 12) {
-        ensure_multibranch_schema($pdo);
     }
 }
 
@@ -977,13 +955,13 @@ function seed_demo_data(PDO $pdo): void {
         }
     }
 
-    // Barbers (2 demo)
-    $pdo->exec("INSERT INTO barbers (business_id, name, is_active) VALUES (1,'Profesional 1',1), (1,'Profesional 2',1)");
+    // Profesionales (2 demo)
+    $pdo->exec("INSERT INTO profesionales (business_id, name, is_active) VALUES (1,'Profesional 1',1), (1,'Profesional 2',1)");
     $bh = $pdo->query("SELECT weekday, open_time, close_time, is_closed FROM business_hours WHERE business_id=1")->fetchAll();
-    $barbers = $pdo->query("SELECT id FROM barbers WHERE business_id=1 ORDER BY id")->fetchAll();
-    $ins = $pdo->prepare("INSERT OR REPLACE INTO barber_hours (business_id, barber_id, weekday, open_time, close_time, is_closed)
+    $profesionales = $pdo->query("SELECT id FROM profesionales WHERE business_id=1 ORDER BY id")->fetchAll();
+    $ins = $pdo->prepare("INSERT OR REPLACE INTO barber_hours (business_id, professional_id, weekday, open_time, close_time, is_closed)
                            VALUES (1,:bid,:w,:o,:c,:closed)");
-    foreach ($barbers as $b) {
+    foreach ($profesionales as $b) {
         foreach ($bh as $h) {
             $ins->execute([
                 ':bid' => (int)$b['id'],
@@ -1013,6 +991,78 @@ function seed_demo_data(PDO $pdo): void {
             ':img' => $s[5],
         ]);
     }
+}
+
+
+function ensure_payment_schema(PDO $pdo): void {
+    // Businesses: payment settings + MercadoPago tokens (per business)
+    if (!db_column_exists($pdo, 'businesses', 'payment_mode')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN payment_mode TEXT NOT NULL DEFAULT 'OFF'");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'deposit_percent_default')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN deposit_percent_default INTEGER NOT NULL DEFAULT 30");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'mp_connected')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN mp_connected INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'mp_user_id')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN mp_user_id TEXT DEFAULT ''");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'mp_access_token')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN mp_access_token TEXT DEFAULT ''");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'mp_refresh_token')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN mp_refresh_token TEXT DEFAULT ''");
+    }
+    if (!db_column_exists($pdo, 'businesses', 'mp_token_expires_at')) {
+        $pdo->exec("ALTER TABLE businesses ADD COLUMN mp_token_expires_at TEXT DEFAULT ''");
+    }
+
+    // Services: optional override deposit percent
+    if (db_table_exists($pdo, 'services') && !db_column_exists($pdo, 'services', 'deposit_percent_override')) {
+        $pdo->exec("ALTER TABLE services ADD COLUMN deposit_percent_override INTEGER");
+    }
+
+    // Appointments: payment tracking
+    if (db_table_exists($pdo, 'appointments')) {
+        if (!db_column_exists($pdo, 'appointments', 'payment_status')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'none'");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'payment_mode')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN payment_mode TEXT NOT NULL DEFAULT 'none'");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'payment_amount_ars')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN payment_amount_ars INTEGER NOT NULL DEFAULT 0");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'payment_expires_at')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN payment_expires_at TEXT");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'mp_preference_id')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN mp_preference_id TEXT DEFAULT ''");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'mp_payment_id')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN mp_payment_id TEXT DEFAULT ''");
+        }
+        if (!db_column_exists($pdo, 'appointments', 'paid_at')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN paid_at TEXT");
+        }
+        // WhatsApp dashboard: skip reminder without sending
+        if (!db_column_exists($pdo, 'appointments', 'reminder_skipped_at')) {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT");
+        }
+    }
+}
+
+function expire_pending_payments(PDO $pdo): void {
+    // Expire pending payments after deadline (localtime to match stored times)
+    // Only affects slots that were created as payment-required reservations.
+    $pdo->prepare("UPDATE appointments
+                   SET status='VENCIDO', payment_status='expired', updated_at=CURRENT_TIMESTAMP
+                   WHERE status='PENDIENTE_PAGO'
+                     AND payment_status='pending'
+                     AND payment_expires_at IS NOT NULL
+                     AND datetime(payment_expires_at) <= datetime('now','localtime')")
+        ->execute();
 }
 
 function expire_pending_bookings(PDO $pdo): void {

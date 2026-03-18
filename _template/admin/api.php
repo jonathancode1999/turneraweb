@@ -14,7 +14,7 @@ $action = $_GET['action'] ?? '';
 
 try {
   if ($action === 'hours') {
-    $barberId = (int)($_GET['barber_id'] ?? 0);
+    $barberId = (int)($_GET['professional_id'] ?? 0);
     $date = trim($_GET['date'] ?? '');
     if ($barberId <= 0 || $date === '') {
       json_response(['ok'=>false,'error'=>'Faltan datos'], 400);
@@ -30,7 +30,7 @@ try {
     json_response([
       'ok' => true,
       'date' => $date,
-      'barber_id' => $barberId,
+      'professional_id' => $barberId,
       'is_timeoff' => $isTimeoff ? 1 : 0,
       'is_closed' => (int)($hours['is_closed'] ?? 1),
       'open_time' => (string)($hours['open_time'] ?? ''),

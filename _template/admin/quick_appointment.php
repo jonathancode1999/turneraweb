@@ -22,9 +22,9 @@ $today = now_tz()->format('Y-m-d');
 $date = trim($_GET['date'] ?? $today);
 if ($date < $today) $date = $today;
 
-$barbersStmt = $pdo->prepare('SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barbersStmt = $pdo->prepare('SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barbersStmt->execute([':bid' => $bid, ':brid' => $branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 
 $servicesStmt = $pdo->prepare('SELECT id, name, duration_minutes FROM services WHERE business_id=:bid AND is_active=1 ORDER BY id');
 // services are shared across branches (branch is chosen via professional schedule)
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   try {
     $ymd = trim($_POST['date'] ?? '');
     $hm = trim($_POST['time'] ?? '');
-    $barberId = (int)($_POST['barber_id'] ?? 0);
+    $barberId = (int)($_POST['professional_id'] ?? 0);
     $serviceId = (int)($_POST['service_id'] ?? 0);
     if ($ymd === '' || $hm === '' || $barberId <= 0 || $serviceId <= 0) {
       throw new RuntimeException('Completá fecha, hora, profesional y servicio.');
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$day) throw new RuntimeException('Fecha inválida.');
     $day = $day->setTime(0, 0);
 
-    // Validate business/barber working hours (and timeoff) so we can clamp the requested time.
+    // Validate business/profesional working hours (and timeoff) so we can clamp the requested time.
     if (barber_is_on_timeoff($bid, $barberId, $day)) {
       throw new RuntimeException('Ese profesional está de vacaciones ese día.');
     }
@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = random_token(16);
     $customerName = trim((string)($_POST['customer_name'] ?? ''));
     if ($customerName === '') $customerName = '---';
-    $pdo->prepare('INSERT INTO appointments (business_id, branch_id, barber_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars)
+    $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars)
         VALUES
         (:bid, :brid, :bar, :srv, :cn, :cp, :ce, :nt, :s, :e, :st, :t, :price)')
       ->execute(array(
@@ -177,9 +177,9 @@ admin_nav('appointments');
 
       <div>
         <label>Profesional</label>
-        <select name="barber_id" required>
+        <select name="professional_id" required>
           <option value="">Elegir...</option>
-          <?php foreach ($barbers as $b): ?>
+          <?php foreach ($profesionales as $b): ?>
             <option value="<?php echo (int)$b['id']; ?>"><?php echo h($b['name']); ?></option>
           <?php endforeach; ?>
         </select>
@@ -215,7 +215,7 @@ admin_nav('appointments');
   (function(){
     const dateEl = document.querySelector('input[name="date"]');
     const timeEl = document.querySelector('input[name="time"]');
-    const barberEl = document.querySelector('select[name="barber_id"]');
+    const barberEl = document.querySelector('select[name="professional_id"]');
     const today = <?php echo json_encode($today); ?>;
     function pad(n){return String(n).padStart(2,'0');}
     async function refreshConstraints(){
@@ -231,11 +231,11 @@ admin_nav('appointments');
         minTime = pad(now.getHours())+':'+pad(now.getMinutes());
       }
 
-      // 2) Working hours (when barber is selected)
+      // 2) Working hours (when profesional is selected)
       const barberId = barberEl?.value || '';
       if(barberId){
         try{
-          const url = 'api.php?action=hours&barber_id='+encodeURIComponent(barberId)+'&date='+encodeURIComponent(dateEl.value);
+          const url = 'api.php?action=hours&professional_id='+encodeURIComponent(barberId)+'&date='+encodeURIComponent(dateEl.value);
           const res = await fetch(url, {headers:{'Accept':'application/json'}});
           const j = await res.json();
           if(j && j.ok){

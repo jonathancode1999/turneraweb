@@ -89,7 +89,7 @@ function build_appt_details_html(array $biz, array $appt, string $manageUrl = ''
     }
 
     $service = trim((string)($appt['service_name'] ?? ''));
-    $barber = trim((string)($appt['barber_name'] ?? ''));
+    $profesional = trim((string)($appt['barber_name'] ?? ''));
     $customer = trim((string)($appt['customer_name'] ?? ''));
     $phone = trim((string)($appt['customer_phone'] ?? ''));
     $email = trim((string)($appt['customer_email'] ?? ''));
@@ -101,7 +101,7 @@ function build_appt_details_html(array $biz, array $appt, string $manageUrl = ''
     if ($phone !== '') $rows[] = '<tr><td><b>Teléfono</b></td><td>' . h($phone) . '</td></tr>';
     if ($email !== '') $rows[] = '<tr><td><b>Email</b></td><td>' . h($email) . '</td></tr>';
     if ($service !== '') $rows[] = '<tr><td><b>Servicio</b></td><td>' . h($service) . '</td></tr>';
-    if ($barber !== '') $rows[] = '<tr><td><b>Profesional</b></td><td>' . h($barber) . '</td></tr>';
+    if ($profesional !== '') $rows[] = '<tr><td><b>Profesional</b></td><td>' . h($profesional) . '</td></tr>';
     
     $statusLabel = appt_status_label((string)($appt['status'] ?? ''));
     if ($statusLabel !== '') $rows[] = '<tr><td><b>Estado</b></td><td>' . h($statusLabel) . '</td></tr>';
@@ -160,7 +160,20 @@ function notify_event(string $event, array $business, array $appt, array $extra 
         }
     }
 
-    $details = build_appt_details_html($business, $appt, $manageUrl);
+    // Owner/admin should not receive the public manage link (that one is for customers)
+    $ownerManageUrl = '';
+    if (!empty($appt['id'])) {
+        try {
+            $ownerManageUrl = rtrim(base_url(), '/') . '/admin/appointment.php?id=' . rawurlencode((string)$appt['id']);
+        } catch (Throwable $e) {
+            $ownerManageUrl = '';
+        }
+    }
+
+    $detailsCustomer = build_appt_details_html($business, $appt, $manageUrl);
+    $detailsOwner = build_appt_details_html($business, $appt, $ownerManageUrl !== '' ? $ownerManageUrl : $manageUrl);
+    // Keep legacy var name for customer path below
+    $details = $detailsCustomer;
     $subject = $fromName . ' - Turno';
     $body = '';
     $sendToCustomer = $custEmail !== '';
@@ -243,6 +256,50 @@ if (strpos($bodyTpl, '{details_html}') !== false) {
         $sendToOwner = false;
     }
 
+    // --- Owner notification (different from customer email) ---
+    $ownerSubject = $subject;
+    $ownerBody = $body;
+    if ($sendToOwner) {
+        $when = $start->format('d/m/Y') . ' ' . $start->format('H:i');
+        $service = (string)($appt['service_name'] ?? 'Servicio');
+        $customer = (string)($appt['customer_name'] ?? 'Cliente');
+        $pro = (string)($appt['barber_name'] ?? '');
+
+        $ownerPrefix = $fromName . ' — ';
+        if ($eventKey === 'booking_pending') {
+            $ownerPrefix .= 'Nuevo turno (pendiente)';
+        } elseif ($eventKey === 'booking_approved') {
+            $ownerPrefix .= 'Turno aprobado';
+        } elseif ($eventKey === 'booking_cancelled') {
+            $ownerPrefix .= 'Turno cancelado';
+        } elseif ($eventKey === 'reschedule_pending') {
+            $ownerPrefix .= 'Reprogramación solicitada';
+        } elseif ($eventKey === 'reschedule_approved') {
+            $ownerPrefix .= 'Reprogramación aprobada';
+        } elseif ($eventKey === 'reschedule_cancelled') {
+            $ownerPrefix .= 'Reprogramación cancelada';
+        } else {
+            $ownerPrefix .= 'Actualización de turno';
+        }
+        $ownerSubject = $ownerPrefix . ' — ' . $customer . ' — ' . $service . ' — ' . $when;
+
+        $lines = [];
+        $lines[] = '<p><strong>Cliente:</strong> ' . h($customer) . '</p>';
+        if (!empty($appt['customer_phone'])) $lines[] = '<p><strong>Teléfono:</strong> ' . h((string)$appt['customer_phone']) . '</p>';
+        if (!empty($appt['customer_email'])) $lines[] = '<p><strong>Email:</strong> ' . h((string)$appt['customer_email']) . '</p>';
+        $lines[] = '<p><strong>Servicio:</strong> ' . h($service) . '</p>';
+        if ($pro !== '') $lines[] = '<p><strong>Profesional:</strong> ' . h($pro) . '</p>';
+        $lines[] = '<p><strong>Cuándo:</strong> ' . h($when) . '</p>';
+        if (!empty($appt['notes'])) $lines[] = '<p><strong>Notas:</strong> ' . nl2br(h((string)$appt['notes'])) . '</p>';
+        $linkOwner = ($ownerManageUrl !== '' ? $ownerManageUrl : $manageUrl);
+        if ($linkOwner) {
+            $lines[] = '<p style="margin-top:16px"><a href="' . h($linkOwner) . '" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#111;color:#fff;text-decoration:none">Gestionar turno</a></p>';
+        }
+        $title = ($eventKey === 'booking_pending') ? 'Nuevo turno recibido' : 'Actualización de turno';
+        $intro = ($eventKey === 'booking_pending') ? 'Te llegó una nueva solicitud de turno.' : 'Hubo una actualización en un turno.';
+        $ownerBody = build_base_email($title, $intro, implode("\n", $lines));
+    }
+
     $results = [
         'customer' => ['ok' => null, 'error' => null],
         'owner' => ['ok' => null, 'error' => null],
@@ -252,7 +309,7 @@ if (strpos($bodyTpl, '{details_html}') !== false) {
         $results['customer'] = send_mail_html_result($custEmail, $subject, $body, $fromEmail, $fromName);
     }
     if ($sendToOwner) {
-        $results['owner'] = send_mail_html_result($ownerEmail, $subject, $body, $fromEmail, $fromName);
+        $results['owner'] = send_mail_html_result($ownerEmail, $ownerSubject, $ownerBody, $fromEmail, $fromName);
     }
 
     return $results;

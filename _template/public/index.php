@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/utils.php';
 require_once __DIR__ . '/../includes/branches.php';
-require_once __DIR__ . '/../includes/service_barbers.php';
+require_once __DIR__ . '/../includes/service_profesionales.php';
 require_once __DIR__ . '/../includes/layout.php';
 require_once __DIR__ . '/../includes/anti_spam.php';
 
@@ -22,6 +22,12 @@ if ($oldJson !== '') {
 
 $branchId = public_current_branch_id();
 $branch = branch_get($branchId);
+if (!$branch) {
+  // Safety: if cookie/query pointed to a non-existing branch, fall back to a valid one
+  $branchId = public_current_branch_id();
+  $branch = branch_get($branchId);
+}
+
 
 $business = $pdo->query('SELECT * FROM businesses WHERE id=' . $bid)->fetch();
 $branches = branches_all_active();
@@ -40,6 +46,7 @@ if ($mapEmbed === '' && $branch && !empty($branch['address'])) {
 
 // Fallback for safety (should not happen, but avoid breaking the home)
 if (!$branch) {
+  $branchId = 1;
   $branch = [
     'id' => 1,
     'name' => (string)($business['name'] ?? 'Turnera'),
@@ -48,9 +55,9 @@ if (!$branch) {
     'whatsapp_phone' => '',
   ];
 }
-$barbersStmt = $pdo->prepare('SELECT * FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barbersStmt = $pdo->prepare('SELECT * FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barbersStmt->execute([':bid' => $bid, ':brid' => $branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 $services = $pdo->prepare('SELECT * FROM services WHERE business_id=:bid AND is_active=1 ORDER BY id');
 $services->execute([':bid' => $bid]);
 $services = $services->fetchAll();
@@ -90,7 +97,7 @@ try {
 
   // Bloqueo global vigente
   if ($openNow) {
-	  $nst = $pdo->prepare('SELECT COUNT(*) FROM blocks WHERE business_id=:bid AND branch_id=:brid AND barber_id IS NULL AND start_at <= :n AND end_at >= :n');
+	  $nst = $pdo->prepare('SELECT COUNT(*) FROM blocks WHERE business_id=:bid AND branch_id=:brid AND professional_id IS NULL AND start_at <= :n AND end_at >= :n');
 	  $nst->execute([':bid' => $bid, ':brid' => $branchId, ':n' => $now->format('Y-m-d H:i:s')]);
     if ((int)($nst->fetchColumn() ?: 0) > 0) {
       $openNow = false;
@@ -208,16 +215,16 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <?php endif; ?>
         </div>
 
-        <?php if (count($barbers) > 0): ?>
+        <?php if (count($profesionales) > 0): ?>
           <div class="hero-pros">
             <div class="section-title" style="margin:10px 0 6px 0">Profesionales</div>
-            <?php $prosNav = count($barbers) > 3; ?>
+            <?php $prosNav = count($profesionales) > 3; ?>
             <div class="pros-wrap">
               <?php if ($prosNav): ?>
                 <button class="icon-btn" type="button" id="prosPrev" aria-label="Anterior">‹</button>
               <?php endif; ?>
               <div class="pros-row" id="prosRow" <?php echo $prosNav ? '' : 'style="overflow:visible;width:auto;max-width:none;flex:0 0 auto"'; ?>>
-              <?php foreach ($barbers as $b):
+              <?php foreach ($profesionales as $b):
                 $nm = trim((string)$b['name']);
                 $initials = $nm !== '' ? strtoupper(mb_substr(preg_replace('/\s+/', '', $nm), 0, 2, 'UTF-8')) : 'PR';
                 $av = trim((string)($b['avatar_path'] ?? ''));
@@ -256,7 +263,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 
     <form method="post" action="create_booking.php" id="bookingForm">
       <input type="hidden" name="branch_id" id="branch_id" value="<?php echo (int)$branchId; ?>">
-      <input type="hidden" name="barber_id" id="barber_id" required value="<?php echo h((string)($bookingOld['barber_id'] ?? '0')); ?>">
+      <input type="hidden" name="professional_id" id="professional_id" required value="<?php echo h((string)($bookingOld['professional_id'] ?? '0')); ?>">
       <input type="hidden" name="service_id" id="service_id" required value="<?php echo h((string)($bookingOld['service_id'] ?? '')); ?>">
       <input type="hidden" name="date" id="date" required value="<?php echo h((string)($bookingOld['date'] ?? '')); ?>">
       <input type="hidden" name="time" id="time" required value="<?php echo h((string)($bookingOld['time'] ?? '')); ?>">
@@ -288,12 +295,12 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         </div>
       </div>
 
-      <?php $canChoose = ((int)($business['customer_choose_barber'] ?? 1)===1) && (count($barbers) > 0); ?>
+      <?php $canChoose = ((int)($business['customer_choose_barber'] ?? 1)===1) && (count($profesionales) > 0); ?>
       <div class="step-pane" data-step="2" id="proStepPane" style="<?php echo $canChoose ? '' : 'display:none'; ?>">
         <label>Elegí profesional</label>
         <div class="pro-pills" id="proPills">
           <div class="pro-pill selected" role="button" tabindex="0" data-id="0">Primer profesional disponible</div>
-          <?php foreach ($barbers as $b): ?>
+          <?php foreach ($profesionales as $b): ?>
             <div class="pro-pill" role="button" tabindex="0" data-id="<?php echo (int)$b['id']; ?>"><?php echo h($b['name']); ?></div>
           <?php endforeach; ?>
         </div>
@@ -420,7 +427,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
 (function(){
   const serviceInput = document.getElementById('service_id');
-  const barberInput = document.getElementById('barber_id');
+  const barberInput = document.getElementById('professional_id');
   const dateInput = document.getElementById('date');
   const timeInput = document.getElementById('time');
   const submit = document.getElementById('submitBtn');
@@ -669,7 +676,7 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
     }
 
     try{
-      const res = await fetch(`api.php?action=times&barber_id=${encodeURIComponent(bid)}&service_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(d)}`);
+      const res = await fetch(`api.php?action=times&professional_id=${encodeURIComponent(bid)}&service_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(d)}`);
       const data = await res.json();
       if(!data.ok){
         timesHelp.textContent = data.error || 'Sin horarios.';
@@ -718,7 +725,7 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
   }
 
   function validateForm(){
-    // barber_id can be "0" (primer profesional disponible)
+    // professional_id can be "0" (primer profesional disponible)
     submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
   }
 

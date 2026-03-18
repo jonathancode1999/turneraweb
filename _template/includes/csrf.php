@@ -11,10 +11,15 @@ function csrf_token(): string {
     return $_SESSION['csrf'];
 }
 
-function csrf_validate_or_die(): void {
+/**
+ * CSRF validation helper.
+ * Backwards compatible: if no token is provided, reads from POST field "csrf".
+ * Some endpoints (e.g. WhatsApp action links) use a CSRF token in GET; pass it as argument.
+ */
+function csrf_validate_or_die($token = null): void {
     session_start_safe();
-    $t = $_POST['csrf'] ?? '';
-    if (!$t || empty($_SESSION['csrf']) || !hash_equals($_SESSION['csrf'], $t)) {
+    $t = ($token !== null) ? (string)$token : (string)($_POST['csrf'] ?? '');
+    if (!$t || empty($_SESSION['csrf']) || !hash_equals((string)$_SESSION['csrf'], (string)$t)) {
         http_response_code(403);
         echo 'CSRF inválido';
         exit;
@@ -22,8 +27,8 @@ function csrf_validate_or_die(): void {
 }
 
 // Alias corto usado en algunos endpoints/admin.
-function csrf_require(): void {
-    csrf_validate_or_die();
+function csrf_require($token = null): void {
+    csrf_validate_or_die($token);
 }
 
 function csrf_field(): void {

@@ -18,7 +18,7 @@ $stmt = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_nam
     COALESCE(bo.address, b.address) AS address
   FROM appointments a
   JOIN services s ON s.id=a.service_id
-  JOIN barbers br ON br.id=a.barber_id
+  JOIN profesionales br ON br.id=a.professional_id
   JOIN businesses b ON b.id=a.business_id
   LEFT JOIN branches bo ON bo.id=a.branch_id AND bo.business_id=a.business_id
   WHERE a.business_id=:bid AND a.token=:t');

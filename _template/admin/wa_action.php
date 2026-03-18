@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/utils.php';
 require_once __DIR__ . '/../includes/branches.php';
 require_once __DIR__ . '/../includes/whatsapp.php';
+require_once __DIR__ . '/../includes/notifications.php';
 require_once __DIR__ . '/../includes/csrf.php';
 
 admin_require_login();
@@ -19,15 +20,17 @@ if (!$token || empty($_SESSION['csrf']) || !hash_equals($_SESSION['csrf'], $toke
 
 $pdo = db();
 
-// Ensure reminder_skipped_at column exists (for dismiss option)
-try {
-  $cols = $pdo->query("PRAGMA table_info(appointments)")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-  $have = [];
-  foreach ($cols as $c) { $have[$c['name']] = true; }
-  if (!isset($have['reminder_skipped_at'])) {
-    $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT NULL");
-  }
-} catch (Throwable $e) {}
+// Ensure reminder_skipped_at column exists (SQLite legacy only)
+if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+  try {
+    $cols = $pdo->query("PRAGMA table_info(appointments)")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $have = [];
+    foreach ($cols as $c) { $have[$c['name']] = true; }
+    if (!isset($have['reminder_skipped_at'])) {
+      $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT NULL");
+    }
+  } catch (Throwable $e) {}
+}
 
 $cfg = app_config();
 $bid = (int)($cfg['business_id'] ?? 0);
@@ -53,12 +56,17 @@ if (!$branch) { header('Location: ' . $return); exit; }
 $st = $pdo->prepare("SELECT a.*, s.name AS service_name, b.name AS barber_name
   FROM appointments a
   JOIN services s ON s.id=a.service_id
-  JOIN barbers b ON b.id=a.barber_id
+  JOIN profesionales b ON b.id=a.professional_id
   WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id
   LIMIT 1");
 $st->execute([':bid'=>$bid, ':brid'=>$branchId, ':id'=>$id]);
 $a = $st->fetch(PDO::FETCH_ASSOC);
 if (!$a) { header('Location: ' . $return); exit; }
+
+// Load business for notifications
+$bst = $pdo->prepare("SELECT * FROM businesses WHERE id=:bid LIMIT 1");
+$bst->execute([':bid'=>$bid]);
+$business = $bst->fetch(PDO::FETCH_ASSOC) ?: [];
 
 // Apply action (except reminder/rescheduled which may already be applied by other flows)
 $event = '';
@@ -90,6 +98,28 @@ elseif ($act === 'dismiss_reminder') {
     ->execute([':bid'=>$bid, ':brid'=>$branchId, ':id'=>$id]);
   header('Location: ' . $return);
   exit;
+}
+
+// Email notification to customer (only for status-changing actions)
+try {
+  $eventMail = '';
+  if ($event === 'approved') $eventMail = 'booking_approved';
+  elseif ($event === 'cancelled') $eventMail = 'booking_cancelled';
+  elseif ($event === 'rescheduled') $eventMail = 'reschedule_approved';
+  if ($eventMail !== '') {
+    // Reload appointment after UPDATE (to include updated status/timestamps)
+    $st2 = $pdo->prepare("SELECT a.*, s.name AS service_name, b.name AS barber_name
+      FROM appointments a
+      JOIN services s ON s.id=a.service_id
+      JOIN profesionales b ON b.id=a.professional_id
+      WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id
+      LIMIT 1");
+    $st2->execute([':bid'=>$bid, ':brid'=>$branchId, ':id'=>$id]);
+    $a2 = $st2->fetch(PDO::FETCH_ASSOC) ?: $a;
+    notify_event($eventMail, $business ?: [], $a2, ['to_owner'=>false]);
+  }
+} catch (Throwable $e) {
+  // non-fatal
 }
 
 $phone = wa_normalize_phone((string)($a['customer_phone'] ?? ''));

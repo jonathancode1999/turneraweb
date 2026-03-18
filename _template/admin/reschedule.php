@@ -29,7 +29,7 @@ if ($id <= 0) {
 $stmt = $pdo->prepare("SELECT a.*, s.name AS service_name, s.duration_minutes, br.name AS barber_name
   FROM appointments a
   JOIN services s ON s.id=a.service_id
-  JOIN barbers br ON br.id=a.barber_id
+  JOIN profesionales br ON br.id=a.professional_id
   WHERE a.business_id=:bid AND a.id=:id");
 $stmt->execute(array(':bid' => $bid, ':id' => $id));
 $a = $stmt->fetch();
@@ -49,9 +49,9 @@ $services = $pdo->prepare('SELECT id, name, duration_minutes, is_active FROM ser
 $services->execute(array(':bid' => $bid));
 $services = $services->fetchAll() ?: array();
 
-$barbers = $pdo->prepare('SELECT id, name, is_active FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
-$barbers->execute(array(':bid' => $bid, ':brid' => $branchId));
-$barbers = $barbers->fetchAll() ?: array();
+$profesionales = $pdo->prepare('SELECT id, name, is_active FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$profesionales->execute(array(':bid' => $bid, ':brid' => $branchId));
+$profesionales = $profesionales->fetchAll() ?: array();
 
 $message = '';
 $error = flash_get('error');
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $oldDt = parse_db_datetime((string)$a['start_at']);
       $oldWhen = $oldDt->format('d/m/Y H:i');
     } catch (Throwable $e) {}
-    $newBarberId = (int)($_POST['new_barber_id'] ?? 0);
+    $newBarberId = (int)($_POST['new_professional_id'] ?? 0);
     $newServiceId = (int)($_POST['new_service_id'] ?? 0);
     if ($newServiceId <= 0) $newServiceId = (int)$a['service_id'];
     $newDate = trim($_POST['new_date'] ?? '');
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $pdo->beginTransaction();
     $pdo->prepare("UPDATE appointments
-      SET barber_id=:bar,
+      SET professional_id=:bar,
           service_id=:sid,
           start_at=:s,
           end_at=:e,
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           requested_start_at=NULL,
           requested_end_at=NULL,
           requested_at=NULL,
-          requested_barber_id=NULL,
+          requested_professional_id=NULL,
           requested_service_id=NULL,
           updated_at=CURRENT_TIMESTAMP
       WHERE business_id=:bid AND branch_id=:brid AND id=:id")
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       appt_log_event($bid, $branchId, (int)$id, 'admin_rescheduled', 'Reprogramado por el negocio', [
         'old_when' => $oldWhen,
         'new_start_at' => $start->format('Y-m-d H:i:s'),
-        'new_barber_id' => $newBarberId,
+        'new_professional_id' => $newBarberId,
         'new_service_id' => $newServiceId,
       ], 'admin', $uid);
     } catch (Throwable $e) {
@@ -185,10 +185,10 @@ admin_nav('appointments');
 
       <div>
         <label>Profesional</label>
-        <select name="new_barber_id" id="barber_id">
+        <select name="new_professional_id" id="professional_id">
           <option value="0">Automático</option>
-          <?php foreach ($barbers as $b): $bid2=(int)$b['id']; ?>
-            <option value="<?php echo $bid2; ?>" <?php echo $bid2===(int)$a['barber_id']?'selected':''; ?>><?php echo h((string)$b['name']); ?></option>
+          <?php foreach ($profesionales as $b): $bid2=(int)$b['id']; ?>
+            <option value="<?php echo $bid2; ?>" <?php echo $bid2===(int)$a['professional_id']?'selected':''; ?>><?php echo h((string)$b['name']); ?></option>
           <?php endforeach; ?>
         </select>
       </div>
@@ -216,7 +216,7 @@ admin_nav('appointments');
 <script>
 (function(){
   const service = document.getElementById('service_id');
-  const barber  = document.getElementById('barber_id');
+  const profesional  = document.getElementById('professional_id');
   const date    = document.getElementById('new_date');
   const timeSel = document.getElementById('new_time');
   const msg     = document.getElementById('time_msg');
@@ -224,7 +224,7 @@ admin_nav('appointments');
   async function loadTimes(){
     const d = date.value;
     const s = service.value;
-    const b = barber.value;
+    const b = profesional.value;
     timeSel.innerHTML = '<option value="">Cargando...</option>';
     msg.textContent = '';
 
@@ -234,7 +234,7 @@ admin_nav('appointments');
     }
 
     try{
-      const url = `../public/api.php?action=times&date=${encodeURIComponent(d)}&service_id=${encodeURIComponent(s)}&barber_id=${encodeURIComponent(b)}`;
+      const url = `../public/api.php?action=times&date=${encodeURIComponent(d)}&service_id=${encodeURIComponent(s)}&professional_id=${encodeURIComponent(b)}`;
       const res = await fetch(url, {cache:'no-store'});
       const json = await res.json();
       if(!json.ok) throw new Error(json.error || 'Error');
@@ -254,7 +254,7 @@ admin_nav('appointments');
   }
 
   service.addEventListener('change', loadTimes);
-  barber.addEventListener('change', loadTimes);
+  profesional.addEventListener('change', loadTimes);
   date.addEventListener('change', loadTimes);
 
   loadTimes();

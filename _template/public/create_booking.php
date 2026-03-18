@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/availability.php';
-require_once __DIR__ . '/../includes/service_barbers.php';
+require_once __DIR__ . '/../includes/service_profesionales.php';
 require_once __DIR__ . '/../includes/utils.php';
 require_once __DIR__ . '/../includes/branches.php';
 require_once __DIR__ . '/../includes/db.php';
@@ -28,7 +28,7 @@ try {
     // can restore the UI (service/pro/date/time) when captcha fails.
     flash_set('booking_old', json_encode([
         'branch_id' => (string)($_POST['branch_id'] ?? ''),
-        'barber_id' => (string)($_POST['barber_id'] ?? '0'),
+        'professional_id' => (string)($_POST['professional_id'] ?? '0'),
         'service_id' => (string)($_POST['service_id'] ?? ''),
         'date' => (string)($_POST['date'] ?? ''),
         'time' => (string)($_POST['time'] ?? ''),
@@ -54,8 +54,13 @@ if ($branchId <= 0) {
 }
 
 $branch = branch_get($branchId);
+if (!$branch) {
+  $branchId = public_current_branch_id();
+  $branch = branch_get($branchId);
+}
 
-$barberId = (int)($_POST['barber_id'] ?? 0); // 0 = primer profesional disponible
+
+$barberId = (int)($_POST['professional_id'] ?? 0); // 0 = primer profesional disponible
 $serviceId = (int)($_POST['service_id'] ?? 0);
 $date = trim($_POST['date'] ?? '');
 $time = trim($_POST['time'] ?? '');
@@ -69,7 +74,7 @@ try {
     flash_set('booking_error', $e->getMessage());
     flash_set('booking_old', json_encode([
         'branch_id' => (string)($_POST['branch_id'] ?? ''),
-        'barber_id' => (string)($_POST['barber_id'] ?? '0'),
+        'professional_id' => (string)($_POST['professional_id'] ?? '0'),
         'service_id' => (string)($_POST['service_id'] ?? ''),
         'date' => (string)($_POST['date'] ?? ''),
         'time' => (string)($_POST['time'] ?? ''),
@@ -125,10 +130,53 @@ try {
     $pdo = db();
     $token = random_token(16);
 
-    $pdo->beginTransaction();
+    // Start a transaction for the booking insert.
+    // IMPORTANT: in some environments PDO::beginTransaction() can return false
+    // (without throwing). If we then call commit() we'll get:
+    // "There is no active transaction".
+    // So we track whether we actually started the transaction and only commit/rollback then.
+    $startedTx = false;
+    if (!$pdo->inTransaction()) {
+        $startedTx = (bool)$pdo->beginTransaction();
+        if (!$startedTx) {
+            throw new RuntimeException('No se pudo iniciar la transacción');
+        }
+    }
     try {
-        $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, barber_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars)
-                               VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price)');
+        $business = get_business($bid);
+        $paymentModeBiz = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
+        $needsPayment = in_array($paymentModeBiz, ['DEPOSIT','FULL'], true);
+
+        $status = 'PENDIENTE_APROBACION';
+        $paymentStatus = 'none';
+        $paymentMode = 'none';
+        $paymentAmount = 0;
+        $paymentExpiresAt = null;
+
+        if ($needsPayment) {
+            $status = 'PENDIENTE_PAGO';
+            $paymentStatus = 'pending';
+            $paymentMode = ($paymentModeBiz === 'FULL') ? 'full' : 'deposit';
+
+            $price = (int)($service['price_ars'] ?? 0);
+            if ($paymentModeBiz === 'FULL') {
+                $paymentAmount = max(0, $price);
+            } else {
+                $pct = null;
+                if (isset($service['deposit_percent_override']) && $service['deposit_percent_override'] !== null && $service['deposit_percent_override'] !== '') {
+                    $pct = (int)$service['deposit_percent_override'];
+                }
+                if ($pct === null) $pct = (int)($business['deposit_percent_default'] ?? 30);
+                $pct = max(0, min(100, $pct));
+                $paymentAmount = (int)round($price * ($pct / 100.0));
+            }
+            // 15 minutes hold
+            $expires = now_tz()->modify('+15 minutes');
+            $paymentExpiresAt = $expires->format('Y-m-d H:i:s');
+        }
+
+        $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
+                               VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
         $stmt->execute(array(
             ':bid' => $bid,
             ':brid' => $branchId,
@@ -140,9 +188,13 @@ try {
             ':notes' => $notes,
             ':s' => $start->format('Y-m-d H:i:s'),
             ':e' => $end->format('Y-m-d H:i:s'),
-            ':st' => 'PENDIENTE_APROBACION',
+            ':st' => $status,
             ':t' => $token,
             ':price' => (int)($service['price_ars'] ?? 0),
+            ':pstat' => $paymentStatus,
+            ':pmode' => $paymentMode,
+            ':pamt' => $paymentAmount,
+            ':pexp' => $paymentExpiresAt,
         ));
 
         $apptId = (int)$pdo->lastInsertId();
@@ -152,9 +204,13 @@ try {
                 'start_at' => $start->format('Y-m-d H:i:s'),
             ], 'customer');
         }
-        $pdo->commit();
+        if (!empty($startedTx) && $pdo->inTransaction()) {
+            $pdo->commit();
+        }
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if (!empty($startedTx) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 
@@ -164,7 +220,7 @@ try {
         $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
             FROM appointments a
             JOIN services s ON s.id=a.service_id
-            JOIN barbers br ON br.id=a.barber_id
+            JOIN profesionales br ON br.id=a.professional_id
             WHERE a.business_id=:bid AND a.token=:t');
         $stmtN->execute(array(':bid' => $bid, ':t' => $token));
         $full = $stmtN->fetch();
@@ -178,7 +234,11 @@ try {
         // Non-fatal
     }
 
+    if ($needsPayment) {
+    redirect('pay.php?token=' . urlencode($token));
+} else {
     redirect('manage.php?token=' . urlencode($token));
+}
 
 } catch (Throwable $e) {
     http_response_code(400);

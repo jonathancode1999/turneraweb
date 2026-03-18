@@ -12,9 +12,18 @@ $clients = list_clients();
         <?php foreach($clients as $slug):
           try{
             $pdo=client_pdo($slug);
-            $name=$pdo->query("SELECT name FROM businesses WHERE id=1")->fetchColumn() ?: $slug;
-            $logoPath=$pdo->query("SELECT logo_path FROM businesses WHERE id=1")->fetchColumn() ?: '';
-            $coverPath=$pdo->query("SELECT cover_path FROM businesses WHERE id=1")->fetchColumn() ?: '';
+            $bid = client_business_id($slug);
+            $name=$pdo->prepare("SELECT name FROM businesses WHERE id=?");
+            $name->execute([$bid]);
+            $name = $name->fetchColumn() ?: $slug;
+
+            $logoPathStmt=$pdo->prepare("SELECT logo_path FROM businesses WHERE id=?");
+            $logoPathStmt->execute([$bid]);
+            $logoPath=$logoPathStmt->fetchColumn() ?: '';
+
+            $coverPathStmt=$pdo->prepare("SELECT cover_path FROM businesses WHERE id=?");
+            $coverPathStmt->execute([$bid]);
+            $coverPath=$coverPathStmt->fetchColumn() ?: '';
           } catch(Throwable $e){ $name='(error DB)'; $logoPath=''; $coverPath=''; }
           $disabled = client_disabled($slug);
         ?>
@@ -38,6 +47,12 @@ $clients = list_clients();
 
   <div class="col-4">
     <div class="card">
+      <h3 style="margin:0 0 10px 0;">Integraciones</h3>
+      <p class="muted" style="margin:0 0 10px 0;">Configuración técnica global.</p>
+      <a class="btn" href="mp_settings.php">MercadoPago (técnico)</a>
+    </div>
+
+    <div class="card">
       <h3 style="margin:0 0 10px 0;">Crear cliente</h3>
       <form method="post" action="create_client.php">
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
@@ -48,7 +63,7 @@ $clients = list_clients();
         </div>
         <div style="margin-bottom:10px">
           <label>Nombre del negocio</label>
-          <input name="business_name" placeholder="Barbería Jony" required>
+          <input name="business_name" placeholder="Profesionalía Jony" required>
         </div>
         <div style="margin-bottom:10px">
           <label>Usuario admin</label>

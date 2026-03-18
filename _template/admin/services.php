@@ -7,7 +7,7 @@ require_once __DIR__ . '/../includes/branches.php';
 require_once __DIR__ . '/../includes/admin_nav.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/availability.php';
-require_once __DIR__ . '/../includes/service_barbers.php';
+require_once __DIR__ . '/../includes/service_profesionales.php';
 
 admin_require_login();
 admin_require_permission('services');
@@ -18,9 +18,9 @@ $branchId = admin_current_branch_id();
 $pdo = db();
 
 // Professionals in this branch (for per-service assignment)
-$barbersStmt = $pdo->prepare('SELECT id, name, is_active FROM barbers WHERE business_id=:bid AND branch_id=:brid ORDER BY name');
+$barbersStmt = $pdo->prepare('SELECT id, name, is_active FROM profesionales WHERE business_id=:bid AND branch_id=:brid ORDER BY name');
 $barbersStmt->execute([':bid'=>$bid, ':brid'=>$branchId]);
-$barbers = $barbersStmt->fetchAll() ?: [];
+$profesionales = $barbersStmt->fetchAll() ?: [];
 
 // Slot is stored in DB (business settings). Fall back to config.php if missing.
 $biz = $pdo->query('SELECT slot_minutes FROM businesses WHERE id=' . $bid)->fetch() ?: [];
@@ -118,8 +118,8 @@ admin_nav('services');
     <div style="flex:2">
       <label>Profesionales (para este servicio)</label>
       <div class="chips" data-chips-for="create_barber_ids"></div>
-      <select id="create_barber_ids" class="barber-multiselect" name="barber_ids[]" multiple size="3" style="min-width:220px">
-        <?php foreach ($barbers as $b): ?>
+      <select id="create_barber_ids" class="profesional-multiselect" name="barber_ids[]" multiple size="3" style="min-width:220px">
+        <?php foreach ($profesionales as $b): ?>
           <option value="<?php echo (int)$b['id']; ?>" <?php echo ((int)$b['is_active']===1 ? '' : 'disabled'); ?>><?php echo h($b['name']); ?><?php echo ((int)$b['is_active']===1 ? '' : ' (inactivo)'); ?></option>
         <?php endforeach; ?>
       </select>
@@ -149,8 +149,8 @@ admin_nav('services');
         <td data-label="Profesionales">
           <?php $selIds = service_allowed_barber_ids($bid, $branchId, (int)$r['id']); $selSet = array_flip(array_map('intval',$selIds)); ?>
           <div class="chips" data-chips-for="svc_barber_ids_<?php echo (int)$r['id']; ?>"></div>
-          <select id="svc_barber_ids_<?php echo (int)$r['id']; ?>" class="barber-multiselect" name="barber_ids[]" multiple size="3" style="min-width:220px">
-            <?php foreach ($barbers as $b): $bid2=(int)$b['id']; ?>
+          <select id="svc_barber_ids_<?php echo (int)$r['id']; ?>" class="profesional-multiselect" name="barber_ids[]" multiple size="3" style="min-width:220px">
+            <?php foreach ($profesionales as $b): $bid2=(int)$b['id']; ?>
               <option value="<?php echo $bid2; ?>" <?php echo isset($selSet[$bid2]) ? 'selected' : ''; ?> <?php echo ((int)$b['is_active']===1 ? '' : 'disabled'); ?>><?php echo h($b['name']); ?><?php echo ((int)$b['is_active']===1 ? '' : ' (inactivo)'); ?></option>
             <?php endforeach; ?>
           </select>
@@ -215,7 +215,7 @@ admin_nav('services');
     }
 
     function init(){
-      var selects = document.querySelectorAll('select.barber-multiselect');
+      var selects = document.querySelectorAll('select.profesional-multiselect');
       selects.forEach(function(sel){
         refreshChips(sel);
         sel.addEventListener('change', function(){ refreshChips(sel); });

@@ -26,7 +26,7 @@ $stmt = $pdo->prepare("SELECT a.*,
         s.name AS service_name, b.name AS barber_name
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers b ON b.id=a.barber_id
+    JOIN profesionales b ON b.id=a.professional_id
     WHERE a.business_id=:bid AND a.branch_id=:brid AND a.id=:id LIMIT 1");
 $stmt->execute([':bid'=>$bid, ':brid'=>$branchId, ':id'=>$id]);
 $a = $stmt->fetch();
@@ -59,15 +59,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($act === 'approve_reschedule') {
       if (!empty($a['requested_start_at'])) {
         $rs = parse_db_datetime((string)$a['requested_start_at']);
-        $newBarber = (int)($a['requested_barber_id'] ?? $a['barber_id']);
+        $newBarber = (int)($a['requested_professional_id'] ?? $a['professional_id']);
         $newService = (int)($a['requested_service_id'] ?? $a['service_id']);
         [$svc, $newEnd] = assert_slot_available($bid, $branchId, $newBarber, $newService, $rs, (int)$id);
         $pdo->prepare("UPDATE appointments
           SET start_at=:s, end_at=:e,
-              barber_id=:bar, service_id=:sid,
+              professional_id=:bar, service_id=:sid,
               status='ACEPTADO',
               requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-              requested_barber_id=NULL, requested_service_id=NULL,
+              requested_professional_id=NULL, requested_service_id=NULL,
               updated_at=CURRENT_TIMESTAMP
           WHERE business_id=:bid AND branch_id=:brid AND id=:id")
           ->execute([
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $pdo->prepare("UPDATE appointments
         SET status='ACEPTADO',
             requested_start_at=NULL, requested_end_at=NULL, requested_at=NULL,
-            requested_barber_id=NULL, requested_service_id=NULL,
+            requested_professional_id=NULL, requested_service_id=NULL,
             updated_at=CURRENT_TIMESTAMP
         WHERE business_id=:bid AND branch_id=:brid AND id=:id")
         ->execute([':bid' => $bid, ':brid' => $branchId, ':id' => $id]);

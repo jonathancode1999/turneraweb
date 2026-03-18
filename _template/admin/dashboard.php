@@ -16,12 +16,14 @@ $bid = (int)$cfg['business_id'];
 $branchId = admin_current_branch_id();
 $pdo = db();
 
-// Ensure appointments.reminder_skipped_at exists (older DBs may not have it)
-$cols = [];
-$ci = $pdo->query("PRAGMA table_info(appointments)");
-foreach ($ci as $r) { $cols[$r['name']] = true; }
-if (!isset($cols['reminder_skipped_at'])) {
-    $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT");
+// Ensure appointments.reminder_skipped_at exists (SQLite legacy only)
+if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+    $cols = [];
+    $ci = $pdo->query("PRAGMA table_info(appointments)");
+    foreach ($ci as $r) { $cols[$r['name']] = true; }
+    if (!isset($cols['reminder_skipped_at'])) {
+        $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT");
+    }
 }
 
 
@@ -47,7 +49,7 @@ if ($remEnabled === 1 && $remMinutes > 0) {
     $stR = $pdo->prepare("SELECT a.id, a.customer_name, a.customer_phone, a.start_at, s.name AS service_name, b.name AS barber_name
         FROM appointments a
         JOIN services s ON s.id=a.service_id
-        JOIN barbers b ON b.id=a.barber_id
+        JOIN profesionales b ON b.id=a.professional_id
         WHERE a.business_id=:bid AND a.branch_id=:brid
           AND a.status='ACEPTADO'
           AND a.reminder_sent_at IS NULL
@@ -79,7 +81,7 @@ $stmt = $pdo->prepare("SELECT a.id, a.start_at, a.end_at, a.status, a.created_at
         br.name AS barber_name
     FROM appointments a
     JOIN services s ON s.id=a.service_id
-    JOIN barbers br ON br.id=a.barber_id
+    JOIN profesionales br ON br.id=a.professional_id
     WHERE a.business_id=:bid AND a.branch_id=:brid AND date(a.start_at)=:d
     ORDER BY a.start_at ASC, a.created_at ASC");
 $stmt->execute(array(':bid' => $bid, ':brid' => $branchId, ':d' => $viewDate));
@@ -91,10 +93,10 @@ $nextAppts = array();
 try {
   $stmtNext = $pdo->prepare("SELECT a.id, a.start_at, a.end_at, a.status, a.created_at,
           s.name AS service_name, a.customer_name, a.customer_phone, a.customer_email, a.notes,
-          br.name AS barber_name, br.id AS barber_id
+          br.name AS barber_name, br.id AS professional_id
       FROM appointments a
       JOIN services s ON s.id=a.service_id
-      JOIN barbers br ON br.id=a.barber_id
+      JOIN profesionales br ON br.id=a.professional_id
       WHERE a.business_id=:bid AND a.branch_id=:brid
         AND date(a.start_at)=:d
         AND a.start_at >= :now
@@ -111,7 +113,7 @@ try {
   // Primer turno de cada profesional
   $seen = array();
   foreach ($rows as $r) {
-    $barberId = (int)($r['barber_id'] ?? 0);
+    $barberId = (int)($r['professional_id'] ?? 0);
     if ($barberId <= 0) continue;
     if (isset($seen[$barberId])) continue;
     $seen[$barberId] = true;
@@ -130,9 +132,9 @@ try {
   $nextAppts = array();
 }
 // Próximo profesional libre (para la fecha seleccionada)
-$barberStmt = $pdo->prepare('SELECT id, name FROM barbers WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
+$barberStmt = $pdo->prepare('SELECT id, name FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id');
 $barberStmt->execute(array(':bid' => $bid, ':brid' => $branchId));
-$barbers = $barberStmt->fetchAll() ?: [];
+$profesionales = $barberStmt->fetchAll() ?: [];
 
 $svcMinStmt = $pdo->prepare('SELECT id FROM services WHERE business_id=:bid AND is_active=1 ORDER BY duration_minutes ASC LIMIT 1');
 $svcMinStmt->execute(array(':bid' => $bid));
@@ -140,7 +142,7 @@ $minServiceId = (int)($svcMinStmt->fetchColumn() ?: 0);
 
 $freeInfo = array();
 if ($minServiceId > 0) {
-  foreach ($barbers as $b) {
+  foreach ($profesionales as $b) {
     $id = (int)$b['id'];
     $times = available_times_for_day($bid, $branchId, $id, $minServiceId, $viewDate);
     $first = null;
@@ -342,9 +344,9 @@ function dash_tab_btn($label, $date, $active) {
         </div>
         <div>
           <label>Profesional</label>
-          <select name="barber_id">
+          <select name="professional_id">
             <option value="0">Todos (global)</option>
-            <?php foreach ($barbers as $b): ?>
+            <?php foreach ($profesionales as $b): ?>
               <option value="<?php echo (int)$b['id']; ?>"><?php echo h($b['name']); ?></option>
             <?php endforeach; ?>
           </select>

@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     foreach ($sel as $brid) {
       $brid = (int)$brid;
       if ($brid>0) {
-        $pdo->prepare("INSERT OR IGNORE INTO user_branch_access (business_id, user_id, branch_id) VALUES (:bid,:uid,:brid)")
+        $pdo->prepare("INSERT IGNORE INTO user_branch_access (business_id, user_id, branch_id) VALUES (:bid,:uid,:brid)")
           ->execute([':bid'=>$bizId, ':uid'=>$id, ':brid'=>$brid]);
       }
     }

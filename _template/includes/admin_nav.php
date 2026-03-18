@@ -8,7 +8,7 @@ function admin_nav(string $active): void {
         'dashboard' => ['Dashboard', 'dashboard.php', ''],
         'calendar' => ['Agenda', 'calendar.php', ''],
         'appointments' => ['Turnos', 'appointments.php', ''],
-        'barbers' => ['Profesionales', 'barbers.php', ''],
+        'profesionales' => ['Profesionales', 'profesionales.php', ''],
         'services' => ['Servicios', 'services.php', ''],
         'branches' => ['Sucursales', 'branches.php', ''],
         'hours' => ['Horarios', 'hours.php', ''],
@@ -41,7 +41,7 @@ function admin_nav(string $active): void {
     $short = [
         'dashboard' => ['Inicio', 'dashboard.php'],
         'calendar' => ['Agenda', 'calendar.php'],
-        'barbers' => ['Profes.', 'barbers.php'],
+        'profesionales' => ['Profes.', 'profesionales.php'],
         'services' => ['Serv.', 'services.php'],
     ];
 
@@ -52,7 +52,7 @@ function admin_nav(string $active): void {
                 $icon = '•';
         if ($key==='dashboard') $icon='🏠';
         elseif ($key==='appointments' || $key==='calendar') $icon='📅';
-        elseif ($key==='barbers') $icon='👤';
+        elseif ($key==='profesionales') $icon='👤';
         elseif ($key==='services') $icon='✂️';
         echo '<a class="' . $cls . '" href="' . h($it[1]) . '"><span class="bnav-icon" aria-hidden="true">' . $icon . '</span><span class="bnav-label">' . h($it[0]) . '</span></a>';
     }

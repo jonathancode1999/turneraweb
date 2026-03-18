@@ -20,32 +20,52 @@ function branch_get(int $branchId): ?array {
     return $b ?: null;
 }
 
-// PUBLIC: determine current branch from ?branch=ID or cookie branch_id
+// PUBLIC: determine current branch from ?branch=ID or cookie branch_id_{business_id}
 function public_current_branch_id(): int {
     $cfg = app_config();
+    $bid = (int)($cfg['business_id'] ?? 0);
     $default = 1;
 
-    $branchId = 0;
+    // Namespace cookie per business to avoid leaking selection across clients
+    $cookieName = 'branch_id_' . $bid;
+
+    // 1) query param takes precedence
     if (isset($_GET['branch'])) {
         $branchId = (int)$_GET['branch'];
         if ($branchId > 0 && branch_get($branchId)) {
-            @setcookie('branch_id', (string)$branchId, time() + 86400 * 30, '/');
+            @setcookie($cookieName, (string)$branchId, time() + 86400 * 30, '/');
             return $branchId;
         }
     }
 
-    if (isset($_COOKIE['branch_id'])) {
-        $branchId = (int)$_COOKIE['branch_id'];
+    // 2) cookie (new namespaced one)
+    if (isset($_COOKIE[$cookieName])) {
+        $branchId = (int)$_COOKIE[$cookieName];
         if ($branchId > 0 && branch_get($branchId)) return $branchId;
     }
 
-    // fallback: first active branch
+    // 3) backward-compat: old global cookie (avoid breaking existing users)
+    if (isset($_COOKIE['branch_id'])) {
+        $branchId = (int)$_COOKIE['branch_id'];
+        if ($branchId > 0 && branch_get($branchId)) {
+            // migrate cookie
+            @setcookie($cookieName, (string)$branchId, time() + 86400 * 30, '/');
+            return $branchId;
+        }
+    }
+
+    // 4) fallback: first active branch in this business
     $st = db()->prepare("SELECT id FROM branches WHERE business_id=:bid AND is_active=1 ORDER BY id ASC LIMIT 1");
-    $st->execute([':bid'=>(int)$cfg['business_id']]);
+    $st->execute([':bid' => $bid]);
     $id = (int)($st->fetchColumn() ?: 0);
-    if ($id > 0) return $id;
+    if ($id > 0) {
+        @setcookie($cookieName, (string)$id, time() + 86400 * 30, '/');
+        return $id;
+    }
+
     return $default;
 }
+
 
 // ADMIN: require selected branch in session; if not selected, redirect to branches selector
 function admin_current_branch_id(): int {

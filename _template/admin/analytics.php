@@ -120,7 +120,7 @@ if (isset($_GET['export']) && $tab === 'finanzas') {
 	                                   (CASE WHEN a.price_snapshot_ars IS NOT NULL AND a.price_snapshot_ars>0 THEN a.price_snapshot_ars ELSE IFNULL(s.price_ars,0) END) AS amount_ars
                             FROM appointments a
                             JOIN services s ON s.id=a.service_id
-                            LEFT JOIN barbers b ON b.id=a.barber_id
+                            LEFT JOIN profesionales b ON b.id=a.professional_id
                             WHERE $w
                             ORDER BY a.start_at ASC, a.created_at ASC");
         $q->execute($params);
@@ -212,8 +212,8 @@ if ($tab === 'turnos') {
     // Heatmap by weekday x hour (for week/month/year) - for day it is pointless
     $heat = array();
     if ($period !== 'day') {
-        $hstmt = $pdo->prepare("SELECT CAST(strftime('%w', a.start_at) AS INTEGER) as wd,
-                                       CAST(strftime('%H', a.start_at) AS INTEGER) as hh,
+        $hstmt = $pdo->prepare("SELECT CAST((DAYOFWEEK(a.start_at)-1) AS UNSIGNED) as wd,
+                                       CAST(HOUR(a.start_at) AS UNSIGNED) as hh,
                                        COUNT(1) cnt
                                 FROM appointments a
                                 WHERE $whereOk
@@ -237,16 +237,16 @@ if ($tab === 'turnos') {
     $topServices->execute($params);
     $services = $topServices->fetchAll(PDO::FETCH_ASSOC);
 
-    // Top barbers
+    // Top profesionales
     $topBarbers = $pdo->prepare("SELECT b.name, COUNT(1) cnt
                                  FROM appointments a
-                                 LEFT JOIN barbers b ON b.id=a.barber_id
+                                 LEFT JOIN profesionales b ON b.id=a.professional_id
                                  WHERE $whereOk
-                                 GROUP BY a.barber_id
+                                 GROUP BY a.professional_id
                                  ORDER BY cnt DESC
                                  LIMIT 10");
     $topBarbers->execute($params);
-    $barbers = $topBarbers->fetchAll(PDO::FETCH_ASSOC);
+    $profesionales = $topBarbers->fetchAll(PDO::FETCH_ASSOC);
 
     echo '<div class="analytics-grid--turnos" style="margin-top:12px;">';
 
@@ -318,17 +318,17 @@ if ($tab === 'turnos') {
 
     echo '<div class="card">';
 	    echo '<div class="card-title">Top profesionales<button type="button" class="tip-btn" data-tip="Profesionales con más turnos confirmados en el período.">i</button></div>';
-    if ($barbers) {
+    if ($profesionales) {
         $lbls = array(); $vals = array();
-        foreach ($barbers as $r) { $lbls[] = (string)($r['name'] ?: '—'); $vals[] = (int)$r['cnt']; }
+        foreach ($profesionales as $r) { $lbls[] = (string)($r['name'] ?: '—'); $vals[] = (int)$r['cnt']; }
 	        echo '<canvas id="chart_top_barbers" height="180" class="chart-canvas" style="margin-top:10px"></canvas>';
         echo '<script>window.__ANALYTICS__=window.__ANALYTICS__||{};window.__ANALYTICS__.topBarbers='.json_encode(array('labels'=>$lbls,'values'=>$vals)).';</script>';
     }
-    if (!$barbers) {
+    if (!$profesionales) {
         echo '<div class="muted" style="margin-top:10px">Sin datos.</div>';
     } else {
 	        echo '<table class="table analytics-table" style="margin-top:10px"><tr><th>Profesional</th><th>Cant.</th></tr>';
-        foreach ($barbers as $r) echo '<tr><td>'.h($r['name'] ?: '—').'</td><td><b>'.(int)$r['cnt'].'</b></td></tr>';
+        foreach ($profesionales as $r) echo '<tr><td>'.h($r['name'] ?: '—').'</td><td><b>'.(int)$r['cnt'].'</b></td></tr>';
         echo '</table>';
     }
     echo '</div>';

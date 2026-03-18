@@ -52,3 +52,8 @@ function page_foot(): void {
     echo "</div></body></html>";
 }
 
+// Backwards-compat alias (older pages call page_footer())
+function page_footer(): void {
+    page_foot();
+}
+

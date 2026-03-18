@@ -2,6 +2,23 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
+// Ensure WhatsApp-related schema exists (safe to call repeatedly)
+function wa_ensure_schema(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS message_templates (\n"
+        . "  id INT AUTO_INCREMENT PRIMARY KEY,\n"
+        . "  business_id INT NOT NULL,\n"
+        . "  channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp',\n"
+        . "  event_key VARCHAR(64) NOT NULL,\n"
+        . "  body TEXT NOT NULL,\n"
+        . "  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,\n"
+        . "  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+        . "  UNIQUE KEY uq_msg_tpl (business_id, channel, event_key),\n"
+        . "  INDEX idx_msg_tpl_business (business_id)\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
 function wa_normalize_phone(string $raw): string {
     $p = preg_replace('/\D+/', '', $raw);
     if ($p === '') return '';
@@ -17,10 +34,21 @@ function wa_normalize_phone(string $raw): string {
 }
 
 function wa_get_template(PDO $pdo, int $businessId, string $eventKey): ?string {
-    $st = $pdo->prepare("SELECT body FROM message_templates WHERE business_id=:bid AND event_key=:ek AND channel='whatsapp' LIMIT 1");
-    $st->execute([':bid'=>$businessId, ':ek'=>$eventKey]);
-    $row = $st->fetch(PDO::FETCH_ASSOC);
-    if ($row && isset($row['body']) && trim((string)$row['body']) !== '') return (string)$row['body'];
+    // Older installs might not have the table yet (causing 500 in wa_action.php).
+    try {
+        wa_ensure_schema($pdo);
+    } catch (Throwable $e) {
+        // ignore and try to continue with defaults
+    }
+
+    try {
+        $st = $pdo->prepare("SELECT body FROM message_templates WHERE business_id=:bid AND event_key=:ek AND channel='whatsapp' LIMIT 1");
+        $st->execute([':bid'=>$businessId, ':ek'=>$eventKey]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if ($row && isset($row['body']) && trim((string)$row['body']) !== '') return (string)$row['body'];
+    } catch (PDOException $e) {
+        // Table missing / broken — fall back to hardcoded defaults.
+    }
     return null;
 }
 
