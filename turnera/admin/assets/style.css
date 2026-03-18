@@ -28,3 +28,8 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
 .btn-row{display:flex;gap:8px;align-items:center;flex-wrap:nowrap}
 .btn-row .btn{white-space:nowrap}
 @media (max-width:900px){.btn-row{flex-wrap:wrap}}
+
+.toggle-password.is-visible{border-color:var(--primary);color:var(--primary);background:#eff6ff}
+.password-match{min-height:18px}
+.password-match.match-ok{color:#027a48}
+.password-match.match-bad{color:#b42318}

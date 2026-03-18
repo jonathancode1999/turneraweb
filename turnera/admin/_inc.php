@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 session_start();
 
 // Evitar que proxies/CDN cacheen páginas del Super Admin (esto rompe CSRF y sesiones)
@@ -9,7 +8,12 @@ if (!headers_sent()) {
   header('Expires: 0');
 }
 
-function cfg(): array { static $c=null; if($c===null){ $c=require __DIR__.'/config.php'; } return $c; }
+function cfg(): array {
+  if (!array_key_exists('__turnera_admin_cfg_cache', $GLOBALS) || !is_array($GLOBALS['__turnera_admin_cfg_cache'])) {
+    $GLOBALS['__turnera_admin_cfg_cache'] = require __DIR__.'/config.php';
+  }
+  return $GLOBALS['__turnera_admin_cfg_cache'];
+}
 
 // Backward-compatible alias (older code called admin_config()).
 function admin_config(): array { return cfg(); }
@@ -35,12 +39,104 @@ function sa_pdo(): PDO {
 function is_logged(): bool { return !empty($_SESSION['sa_logged']); }
 function require_login(): void { if(!is_logged()){ header('Location: login.php'); exit; } }
 
+function super_admin_username(): string {
+  return trim((string)(cfg()['super_user'] ?? ''));
+}
+
+function super_admin_needs_setup(): bool {
+  $c = cfg();
+  $user = trim((string)($c['super_user'] ?? ''));
+  $email = trim((string)($c['super_email'] ?? ''));
+  $question = trim((string)($c['super_security_question'] ?? ''));
+  $answerHash = trim((string)($c['super_security_answer_hash'] ?? ''));
+  $passHash = trim((string)($c['super_pass_hash'] ?? ''));
+  if ($user === '' || $email === '' || $question === '' || $answerHash === '') {
+    return true;
+  }
+  if ($passHash !== '') {
+    return false;
+  }
+  return trim((string)($c['super_pass'] ?? '')) === '';
+}
+
+function super_admin_question_label(): string {
+  $question = trim((string)(cfg()['super_security_question'] ?? ''));
+  $questions = admin_security_questions();
+  return $questions[$question] ?? $question;
+}
+
+function super_admin_verify_security_answer(string $answer): bool {
+  $hash = (string)(cfg()['super_security_answer_hash'] ?? '');
+  if ($hash === '') return false;
+  return password_verify(admin_normalize_security_answer($answer), $hash);
+}
+
 function login_ok(string $u, string $p): bool {
   $c = cfg();
-  $su = (string)($c['super_user'] ?? '');
+  $su = trim((string)($c['super_user'] ?? ''));
+  if ($su === '' || !hash_equals($su, $u)) return false;
+
+  $hash = trim((string)($c['super_pass_hash'] ?? ''));
+  if ($hash !== '') {
+    return password_verify($p, $hash);
+  }
+
   $sp = (string)($c['super_pass'] ?? '');
-  if ($su === '' || $sp === '') return false;
-  return hash_equals($su, $u) && hash_equals($sp, $p);
+  if ($sp === '') return false;
+  return hash_equals($sp, $p);
+}
+
+function save_admin_config(array $patch): void {
+  $current = cfg();
+  $config = array_merge($current, $patch);
+  $rootDir = "realpath(__DIR__ . '/..')";
+  $keys = [
+    'super_user',
+    'super_pass',
+    'super_pass_hash',
+    'super_email',
+    'super_security_question',
+    'super_security_answer_hash',
+    'root_dir',
+    'mysql_host',
+    'mysql_port',
+    'mysql_db',
+    'mysql_user',
+    'mysql_pass',
+    'mysql_charset',
+  ];
+
+  $lines = ["<?php", "// Super Admin config", "return ["]; 
+  foreach ($keys as $key) {
+    if ($key === 'root_dir') {
+      $lines[] = "  'root_dir' => {$rootDir},";
+      continue;
+    }
+    $value = $config[$key] ?? '';
+    $lines[] = '  '.var_export($key, true).' => '.var_export($value, true).',';
+  }
+  $lines[] = '];';
+  $content = implode(PHP_EOL, $lines).PHP_EOL;
+  file_put_contents(__DIR__.'/config.php', $content, LOCK_EX);
+  $GLOBALS['__turnera_admin_cfg_cache'] = $config;
+}
+
+function super_admin_update_credentials(string $username, string $email, string $password, string $securityQuestion, string $securityAnswer): void {
+  save_admin_config([
+    'super_user' => $username,
+    'super_pass' => '',
+    'super_pass_hash' => password_hash($password, PASSWORD_DEFAULT),
+    'super_email' => $email,
+    'super_security_question' => $securityQuestion,
+    'super_security_answer_hash' => admin_security_answer_hash($securityAnswer),
+  ]);
+}
+
+function super_admin_reset_password(string $password): void {
+  save_admin_config([
+    'super_pass' => '',
+    'super_pass_hash' => password_hash($password, PASSWORD_DEFAULT),
+  ]);
 }
 
 function flash_set(string $k, string $msg): void { $_SESSION['flash'][$k]=$msg; }
@@ -53,27 +149,25 @@ function csrf_token(): string {
   if(empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
   return $_SESSION['csrf'];
 }
-function csrf_check(): void {
+function csrf_check(string $redirect='dashboard.php'): void {
   if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     flash_set('err', 'Acceso inválido.');
-    header('Location: dashboard.php');
+    header('Location: '.$redirect);
     exit;
   }
 
   $t = (string)($_POST['csrf'] ?? '');
 
-  // Si por algún motivo el token no existe en sesión (sesión expirada / cache),
-  // pedimos recargar y reintentar en lugar de mostrar un 400 críptico.
   if (empty($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(16));
     flash_set('err', 'Sesión expirada. Recargá la página y probá de nuevo.');
-    header('Location: dashboard.php');
+    header('Location: '.$redirect);
     exit;
   }
 
   if (!hash_equals((string)$_SESSION['csrf'], $t)) {
     flash_set('err', 'CSRF inválido. Recargá la página y probá de nuevo.');
-    header('Location: dashboard.php');
+    header('Location: '.$redirect);
     exit;
   }
 }
@@ -120,7 +214,6 @@ function client_business_id(string $slug): int {
 }
 
 function client_pdo(string $slug): PDO {
-  // Shared MySQL DB for all clients. Each client points to its business_id in its own config.php
   return sa_pdo();
 }
 

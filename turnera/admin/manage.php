@@ -667,7 +667,7 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     <?php $securityQuestions = admin_security_questions(); ?>
     <div class="card">
       <h3 style="margin:0 0 10px 0;">Agregar</h3>
-      <form method="post">
+      <form method="post" data-password-pair>
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
         <input type="hidden" name="action" value="user_add">
         <div style="margin-bottom:10px"><label>Usuario</label><input name="username" required></div>
@@ -681,8 +681,9 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
           </select>
         </div>
         <div style="margin-bottom:10px"><label>Respuesta de seguridad</label><input name="security_answer" required></div>
-        <div style="margin-bottom:10px"><label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass" name="password" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="manage-user-pass">👁</button></div></div>
-        <div style="margin-bottom:10px"><label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass2" name="password2" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="manage-user-pass2">👁</button></div></div>
+        <div style="margin-bottom:10px"><label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass" name="password" type="password" required style="flex:1"><button class="btn toggle-password" type="button" data-toggle-password="manage-user-pass" aria-label="Mostrar contraseña" aria-pressed="false">👁</button></div></div>
+        <div style="margin-bottom:10px"><label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass2" name="password2" type="password" required style="flex:1"><button class="btn toggle-password" type="button" data-toggle-password="manage-user-pass2" aria-label="Mostrar contraseña" aria-pressed="false">👁</button></div></div>
+        <div class="small password-match" data-password-match-message aria-live="polite" style="margin:-2px 0 12px 0"></div>
         <div style="margin-bottom:12px"><label>Rol</label>
           <select name="role">
             <option value="admin">admin</option>
@@ -695,13 +696,50 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
   </div>
 </div>
 <script>
-document.querySelectorAll('[data-toggle-password]').forEach(function(button){
-  button.addEventListener('click', function(){
-    var input = document.getElementById(button.getAttribute('data-toggle-password'));
-    if (!input) return;
-    input.type = input.type === 'password' ? 'text' : 'password';
-  });
-});
+(function(){
+  function bindPasswordToggle(button){
+    button.addEventListener('click', function(){
+      var input = document.getElementById(button.getAttribute('data-toggle-password'));
+      if (!input) return;
+      var visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.textContent = visible ? '🙈' : '👁';
+      button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      button.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      button.classList.toggle('is-visible', visible);
+    });
+  }
+
+  function bindPasswordPair(scope){
+    var password = scope.querySelector('input[name="password"]');
+    var confirm = scope.querySelector('input[name="password2"]');
+    var message = scope.querySelector('[data-password-match-message]');
+    if (!password || !confirm || !message) return;
+    function refresh(){
+      if (!confirm.value) {
+        message.textContent = 'Repetí la contraseña para verificar que coincida.';
+        message.className = 'small password-match';
+        confirm.setCustomValidity('');
+        return;
+      }
+      if (password.value === confirm.value) {
+        message.textContent = 'Las contraseñas coinciden.';
+        message.className = 'small password-match match-ok';
+        confirm.setCustomValidity('');
+      } else {
+        message.textContent = 'Las contraseñas no coinciden todavía.';
+        message.className = 'small password-match match-bad';
+        confirm.setCustomValidity('Las contraseñas no coinciden.');
+      }
+    }
+    password.addEventListener('input', refresh);
+    confirm.addEventListener('input', refresh);
+    refresh();
+  }
+
+  document.querySelectorAll('[data-toggle-password]').forEach(bindPasswordToggle);
+  document.querySelectorAll('[data-password-pair]').forEach(bindPasswordPair);
+})();
 </script>
 <?php endif; ?>
 

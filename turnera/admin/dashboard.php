@@ -55,7 +55,7 @@ $securityQuestions = admin_security_questions();
 
     <div class="card">
       <h3 style="margin:0 0 10px 0;">Crear cliente</h3>
-      <form method="post" action="create_client.php">
+      <form method="post" action="create_client.php" data-password-pair>
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
         <div style="margin-bottom:10px">
           <label>Slug (carpeta)</label>
@@ -91,16 +91,17 @@ $securityQuestions = admin_security_questions();
           <label>Contraseña admin</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input id="admin-pass" name="admin_pass" type="password" required autocomplete="new-password" style="flex:1">
-            <button class="btn" type="button" data-toggle-password="admin-pass">👁</button>
+            <button class="btn toggle-password" type="button" data-toggle-password="admin-pass" aria-label="Mostrar contraseña" aria-pressed="false">👁</button>
           </div>
         </div>
         <div style="margin-bottom:12px">
           <label>Repetir contraseña</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input id="admin-pass2" name="admin_pass2" type="password" required autocomplete="new-password" style="flex:1">
-            <button class="btn" type="button" data-toggle-password="admin-pass2">👁</button>
+            <button class="btn toggle-password" type="button" data-toggle-password="admin-pass2" aria-label="Mostrar contraseña" aria-pressed="false">👁</button>
           </div>
         </div>
+        <div class="small password-match" data-password-match-message aria-live="polite" style="margin:-2px 0 12px 0"></div>
         <button class="btn btn-primary" type="submit">Crear</button>
         <div class="small" style="margin-top:10px">El cliente nuevo se crea con el negocio, la sucursal principal y el admin que cargues vos manualmente.</div>
       </form>
@@ -109,13 +110,50 @@ $securityQuestions = admin_security_questions();
 </div>
 
 <script>
-document.querySelectorAll('[data-toggle-password]').forEach(function(button){
-  button.addEventListener('click', function(){
-    var input = document.getElementById(button.getAttribute('data-toggle-password'));
-    if (!input) return;
-    input.type = input.type === 'password' ? 'text' : 'password';
-  });
-});
+(function(){
+  function bindPasswordToggle(button){
+    button.addEventListener('click', function(){
+      var input = document.getElementById(button.getAttribute('data-toggle-password'));
+      if (!input) return;
+      var visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.textContent = visible ? '🙈' : '👁';
+      button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      button.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      button.classList.toggle('is-visible', visible);
+    });
+  }
+
+  function bindPasswordPair(scope){
+    var password = scope.querySelector('input[name="admin_pass"]');
+    var confirm = scope.querySelector('input[name="admin_pass2"]');
+    var message = scope.querySelector('[data-password-match-message]');
+    if (!password || !confirm || !message) return;
+    function refresh(){
+      if (!confirm.value) {
+        message.textContent = 'Repetí la contraseña para verificar que coincida.';
+        message.className = 'small password-match';
+        confirm.setCustomValidity('');
+        return;
+      }
+      if (password.value === confirm.value) {
+        message.textContent = 'Las contraseñas coinciden.';
+        message.className = 'small password-match match-ok';
+        confirm.setCustomValidity('');
+      } else {
+        message.textContent = 'Las contraseñas no coinciden todavía.';
+        message.className = 'small password-match match-bad';
+        confirm.setCustomValidity('Las contraseñas no coinciden.');
+      }
+    }
+    password.addEventListener('input', refresh);
+    confirm.addEventListener('input', refresh);
+    refresh();
+  }
+
+  document.querySelectorAll('[data-toggle-password]').forEach(bindPasswordToggle);
+  document.querySelectorAll('[data-password-pair]').forEach(bindPasswordPair);
+})();
 </script>
 
 <?php footer_html(); ?>
