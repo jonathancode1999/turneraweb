@@ -9,16 +9,16 @@ $systemPath = 'turnera/admin/login.php';
   <title>Turnera | Sistema de turnos online</title>
   <style>
     :root{
-      --bg:#0b1020;
-      --panel:#121937;
-      --panel-2:#1b2450;
-      --line:rgba(255,255,255,.08);
-      --text:#edf2ff;
-      --muted:#b8c2e0;
-      --primary:#7c9cff;
-      --primary-2:#5f7ef0;
-      --ok:#3ddc97;
-      --shadow:0 18px 50px rgba(0,0,0,.35);
+      --bg:#f5f7fb;
+      --panel:#ffffff;
+      --panel-2:#f8fbff;
+      --line:#dbe3f0;
+      --text:#0f172a;
+      --muted:#475569;
+      --primary:#2563eb;
+      --primary-2:#1d4ed8;
+      --ok:#16a34a;
+      --shadow:0 18px 50px rgba(15,23,42,.10);
     }
     *{box-sizing:border-box}
     body{
@@ -26,9 +26,9 @@ $systemPath = 'turnera/admin/login.php';
       font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       color:var(--text);
       background:
-        radial-gradient(circle at top left, rgba(124,156,255,.18), transparent 28%),
-        radial-gradient(circle at top right, rgba(61,220,151,.12), transparent 22%),
-        linear-gradient(180deg, #0b1020 0%, #0f1530 100%);
+        radial-gradient(circle at top left, rgba(37,99,235,.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(22,163,74,.10), transparent 22%),
+        linear-gradient(180deg, #f8fbff 0%, #f5f7fb 100%);
       min-height:100vh;
     }
     a{color:inherit;text-decoration:none}
@@ -40,21 +40,21 @@ $systemPath = 'turnera/admin/login.php';
     .brand{font-weight:800;font-size:1.2rem;letter-spacing:.02em}
     .badge{
       display:inline-flex;align-items:center;gap:8px;
-      background:rgba(61,220,151,.12);color:#bff6dd;border:1px solid rgba(61,220,151,.22);
+      background:#ecfdf3;color:#166534;border:1px solid #bbf7d0;
       border-radius:999px;padding:8px 14px;font-size:.92rem;
     }
     .hero{
       display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:stretch;
     }
     .card{
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      background:linear-gradient(180deg, #ffffff, #f8fbff);
       border:1px solid var(--line);
       border-radius:28px;
       box-shadow:var(--shadow);
     }
     .hero-copy{padding:42px}
     .eyebrow{
-      color:#9fb3ff;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.76rem;
+      color:#2563eb;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.76rem;
       margin-bottom:14px;
     }
     h1{
@@ -76,11 +76,11 @@ $systemPath = 'turnera/admin/login.php';
       transition:.2s ease;
     }
     .btn.primary{background:linear-gradient(180deg,var(--primary),var(--primary-2));color:white}
-    .btn.secondary{border-color:var(--line);background:rgba(255,255,255,.03)}
+    .btn.secondary{border-color:var(--line);background:#fff}
     .btn:hover{transform:translateY(-1px)}
     .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .stat{
-      padding:16px 18px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid var(--line);
+      padding:16px 18px;border-radius:18px;background:#fff;border:1px solid var(--line);
     }
     .stat strong{display:block;font-size:1.45rem;margin-bottom:4px}
     .stat span{color:var(--muted);font-size:.95rem}
@@ -94,7 +94,7 @@ $systemPath = 'turnera/admin/login.php';
     .list{display:grid;gap:12px;margin-top:22px}
     .item{
       display:flex;gap:12px;align-items:flex-start;
-      padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line);
+      padding:14px 16px;border-radius:16px;background:#fff;border:1px solid var(--line);
     }
     .dot{
       width:12px;height:12px;border-radius:50%;
@@ -109,10 +109,10 @@ $systemPath = 'turnera/admin/login.php';
     .feature p{margin:0;color:var(--muted);line-height:1.65}
     .footer-note{
       margin-top:30px;padding:20px 22px;border-radius:20px;
-      border:1px dashed rgba(255,255,255,.14);color:var(--muted);background:rgba(255,255,255,.02);
+      border:1px dashed #cbd5e1;color:var(--muted);background:#fff;
     }
     code{
-      padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.07);color:#fff;
+      padding:3px 8px;border-radius:10px;background:#eff6ff;color:#1d4ed8;
       font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
     }
     @media (max-width: 920px){

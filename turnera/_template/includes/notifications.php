@@ -293,7 +293,7 @@ if (strpos($bodyTpl, '{details_html}') !== false) {
         if (!empty($appt['notes'])) $lines[] = '<p><strong>Notas:</strong> ' . nl2br(h((string)$appt['notes'])) . '</p>';
         $linkOwner = ($ownerManageUrl !== '' ? $ownerManageUrl : $manageUrl);
         if ($linkOwner) {
-            $lines[] = '<p style="margin-top:16px"><a href="' . h($linkOwner) . '" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#111;color:#fff;text-decoration:none">Gestionar turno</a></p>';
+            $lines[] = '<p style="margin-top:16px"><a href="' . h($linkOwner) . '" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#fff;text-decoration:none">Gestionar turno</a></p>';
         }
         $title = ($eventKey === 'booking_pending') ? 'Nuevo turno recibido' : 'Actualización de turno';
         $intro = ($eventKey === 'booking_pending') ? 'Te llegó una nueva solicitud de turno.' : 'Hubo una actualización en un turno.';
