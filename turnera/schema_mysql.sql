@@ -10,6 +10,27 @@ CREATE TABLE IF NOT EXISTS meta (
   `value` TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+-- WhatsApp / Messaging templates (used by admin/wa_action.php)
+-- --------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS message_templates (
+  id INT NOT NULL AUTO_INCREMENT,
+  business_id INT NOT NULL,
+  channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+  event_key VARCHAR(64) NOT NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_msg_tpl (business_id, channel, event_key),
+  KEY idx_msg_tpl_business (business_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- Time off / vacaciones por profesional (usado por includes/availability.php)
+-- -----------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS businesses (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
@@ -80,7 +101,10 @@ CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   business_id INT NOT NULL,
   username VARCHAR(64) NOT NULL,
+  email VARCHAR(190) NOT NULL DEFAULT '',
   password_hash VARCHAR(255) NOT NULL,
+  security_question VARCHAR(80) NOT NULL DEFAULT '',
+  security_answer_hash VARCHAR(255) NOT NULL DEFAULT '',
   role VARCHAR(32) NOT NULL DEFAULT 'admin',
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   all_branches TINYINT(1) NOT NULL DEFAULT 1,
@@ -131,8 +155,11 @@ CREATE TABLE IF NOT EXISTS profesionales (
   business_id INT NOT NULL,
   branch_id INT NOT NULL DEFAULT 1,
   name VARCHAR(255) NOT NULL,
+  phone VARCHAR(60) NULL,
+  email VARCHAR(190) NULL,
   capacity INT NOT NULL DEFAULT 1,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
+  deleted_at DATETIME NULL,
   avatar_path VARCHAR(255) DEFAULT '',
   cover_path VARCHAR(255) DEFAULT '',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -141,6 +168,22 @@ CREATE TABLE IF NOT EXISTS profesionales (
   INDEX idx_barbers_business (business_id),
   INDEX idx_barbers_branch (branch_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS barber_timeoff (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  professional_id INT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  reason VARCHAR(255) DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_timeoff_range (business_id, branch_id, professional_id, start_date, end_date),
+  CONSTRAINT fk_timeoff_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+  CONSTRAINT fk_timeoff_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_timeoff_prof FOREIGN KEY (professional_id) REFERENCES profesionales(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 CREATE TABLE IF NOT EXISTS service_profesionales (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -173,14 +216,15 @@ CREATE TABLE IF NOT EXISTS barber_hours (
   business_id INT NOT NULL,
   branch_id INT NOT NULL DEFAULT 1,
   professional_id INT NOT NULL,
-  weekday TINYINT NOT NULL,
-  open_time TIME NULL,
-  close_time TIME NULL,
-  is_closed TINYINT NOT NULL DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  weekday INT NOT NULL, -- 0=Sun .. 6=Sat
+  open_time VARCHAR(8) DEFAULT NULL,
+  close_time VARCHAR(8) DEFAULT NULL,
+  is_closed TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_barber_hours (business_id, branch_id, professional_id, weekday),
-  INDEX idx_bh_prof (business_id, branch_id, professional_id)
+  INDEX idx_barber_hours (business_id, branch_id, professional_id, weekday),
+  CONSTRAINT fk_bh2_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS blocks (
@@ -189,6 +233,7 @@ CREATE TABLE IF NOT EXISTS blocks (
   branch_id INT NOT NULL DEFAULT 1,
   professional_id INT DEFAULT NULL,
   title VARCHAR(255) DEFAULT '',
+  reason VARCHAR(255) DEFAULT '',
   start_at DATETIME NOT NULL,
   end_at DATETIME NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -221,11 +266,11 @@ CREATE TABLE IF NOT EXISTS appointments (
   cancelled_at DATETIME NULL,
   reminder_sent_at DATETIME NULL,
   reminder_skipped_at DATETIME NULL,
+  -- Snapshot of service price at booking time (for reporting)
+  price_snapshot_ars INT NOT NULL DEFAULT 0,
   payment_status VARCHAR(16) NOT NULL DEFAULT 'none',
   payment_mode VARCHAR(16) NOT NULL DEFAULT 'none',
   payment_amount_ars INT NOT NULL DEFAULT 0,
-  -- Snapshot of the service price at booking time (for analytics/history)
-  price_snapshot_ars INT NOT NULL DEFAULT 0,
   payment_expires_at DATETIME NULL,
   mp_preference_id VARCHAR(255) DEFAULT '',
   mp_payment_id VARCHAR(255) DEFAULT '',
@@ -235,6 +280,29 @@ CREATE TABLE IF NOT EXISTS appointments (
   INDEX idx_appt_range (business_id, branch_id, start_at, end_at),
   INDEX idx_appt_status (business_id, status),
   CONSTRAINT fk_appt_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Appointment events (timeline/audit)
+CREATE TABLE IF NOT EXISTS appointment_events (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  business_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  appointment_id INT NOT NULL,
+  actor_type VARCHAR(24) NOT NULL DEFAULT 'system',
+  actor_user_id INT NULL,
+  event_type VARCHAR(50) NOT NULL,
+  note TEXT NULL,
+  meta_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_appt_events_appt (business_id, branch_id, appointment_id),
+  KEY idx_appt_events_created (business_id, branch_id, created_at),
+  CONSTRAINT fk_appt_events_appt
+    FOREIGN KEY (appointment_id) REFERENCES appointments(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_appt_events_user
+    FOREIGN KEY (actor_user_id) REFERENCES users(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS expenses (

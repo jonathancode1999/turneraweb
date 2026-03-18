@@ -16,18 +16,6 @@ $bid = (int)$cfg['business_id'];
 $branchId = admin_current_branch_id();
 $pdo = db();
 
-// Ensure appointments.reminder_skipped_at exists (SQLite legacy only)
-if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-    $cols = [];
-    $ci = $pdo->query("PRAGMA table_info(appointments)");
-    foreach ($ci as $r) { $cols[$r['name']] = true; }
-    if (!isset($cols['reminder_skipped_at'])) {
-        $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT");
-    }
-}
-
-
-
 // Branch settings
 $branchStmt = $pdo->prepare("SELECT * FROM branches WHERE business_id=:bid AND id=:id");
 $branchStmt->execute([':bid'=>$bid, ':id'=>$branchId]);

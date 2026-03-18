@@ -9,16 +9,6 @@ require_once __DIR__ . '/../includes/admin_nav.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/availability.php';
 
-
-function ensure_whatsapp_branch_columns(PDO $pdo): void {
-  if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
-    // MySQL schema already contains these columns
-    return;
-  }
-  // SQLite legacy: columns are added in includes/db.php migration helpers.
-}
-
-
 admin_require_login();
 admin_require_permission('settings');
 admin_require_branch_selected();
@@ -31,9 +21,6 @@ $branch = branch_get($branchId) ?: [];
 $branch['whatsapp_reminder_enabled'] = (int)($branch['whatsapp_reminder_enabled'] ?? 0);
 $branch['whatsapp_reminder_minutes'] = (int)($branch['whatsapp_reminder_minutes'] ?? 1440);
 $pdo = db();
-
-
-ensure_whatsapp_branch_columns($pdo);
 $notice='';
 $error='';
 $test_notice='';

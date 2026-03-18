@@ -1,6 +1,7 @@
 <?php require __DIR__.'/_inc.php'; require_login();
 header_html('Clientes');
 $clients = list_clients();
+$securityQuestions = admin_security_questions();
 ?>
 <div class="grid">
   <div class="col-8">
@@ -67,17 +68,54 @@ $clients = list_clients();
         </div>
         <div style="margin-bottom:10px">
           <label>Usuario admin</label>
-          <input name="admin_user" value="admin" required>
+          <input name="admin_user" value="<?=h((string)($_POST['admin_user'] ?? ''))?>" required autocomplete="username">
+        </div>
+        <div style="margin-bottom:10px">
+          <label>Correo admin</label>
+          <input name="admin_email" type="email" value="<?=h((string)($_POST['admin_email'] ?? ''))?>" required autocomplete="email">
+        </div>
+        <div style="margin-bottom:10px">
+          <label>Pregunta de seguridad</label>
+          <select name="security_question" required>
+            <option value="">Elegí una pregunta</option>
+            <?php foreach($securityQuestions as $key => $label): ?>
+              <option value="<?=h($key)?>" <?=((string)($_POST['security_question'] ?? '') === $key ? 'selected' : '')?>><?=h($label)?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label>Respuesta de seguridad</label>
+          <input name="security_answer" value="<?=h((string)($_POST['security_answer'] ?? ''))?>" required autocomplete="off">
         </div>
         <div style="margin-bottom:12px">
           <label>Contraseña admin</label>
-          <input name="admin_pass" type="password" required>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="admin-pass" name="admin_pass" type="password" required autocomplete="new-password" style="flex:1">
+            <button class="btn" type="button" data-toggle-password="admin-pass">👁</button>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Repetir contraseña</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="admin-pass2" name="admin_pass2" type="password" required autocomplete="new-password" style="flex:1">
+            <button class="btn" type="button" data-toggle-password="admin-pass2">👁</button>
+          </div>
         </div>
         <button class="btn btn-primary" type="submit">Crear</button>
-        <div class="small" style="margin-top:10px">El cliente nuevo se crea vacío: <b>solo horarios + 1 sucursal + 1 business + 1 admin</b>.</div>
+        <div class="small" style="margin-top:10px">El cliente nuevo se crea con el negocio, la sucursal principal y el admin que cargues vos manualmente.</div>
       </form>
     </div>
   </div>
 </div>
+
+<script>
+document.querySelectorAll('[data-toggle-password]').forEach(function(button){
+  button.addEventListener('click', function(){
+    var input = document.getElementById(button.getAttribute('data-toggle-password'));
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+});
+</script>
 
 <?php footer_html(); ?>

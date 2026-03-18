@@ -78,6 +78,33 @@ function csrf_check(): void {
   }
 }
 
+function admin_security_questions(): array {
+  return [
+    'first_pet' => '¿Cómo se llamaba tu primera mascota?',
+    'childhood_street' => '¿Cuál es el nombre de la calle donde creciste?',
+    'first_school' => '¿Cómo se llamaba tu primera escuela?',
+    'mother_middle_name' => '¿Cuál es el segundo nombre de tu mamá?',
+    'favorite_teacher' => '¿Cómo se llamaba tu profesor/a favorito/a?',
+  ];
+}
+
+function admin_normalize_security_answer(string $answer): string {
+  $answer = trim(mb_strtolower($answer, 'UTF-8'));
+  return preg_replace('/\s+/u', ' ', $answer) ?? '';
+}
+
+function admin_security_answer_hash(string $answer): string {
+  return password_hash(admin_normalize_security_answer($answer), PASSWORD_DEFAULT);
+}
+
+function admin_password_is_strong(string $password): bool {
+  if (strlen($password) < 10) return false;
+  if (!preg_match('/[A-Z]/', $password)) return false;
+  if (!preg_match('/[a-z]/', $password)) return false;
+  if (!preg_match('/\d/', $password)) return false;
+  return true;
+}
+
 function client_slug_valid(string $slug): bool {
   return (bool)preg_match('/^[a-z0-9_\-]+$/', $slug);
 }

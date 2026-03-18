@@ -9,6 +9,59 @@ function session_start_safe(): void {
     }
 }
 
+function admin_security_questions(): array {
+    return [
+        'first_pet' => '¿Cómo se llamaba tu primera mascota?',
+        'childhood_street' => '¿Cuál es el nombre de la calle donde creciste?',
+        'first_school' => '¿Cómo se llamaba tu primera escuela?',
+        'mother_middle_name' => '¿Cuál es el segundo nombre de tu mamá?',
+        'favorite_teacher' => '¿Cómo se llamaba tu profesor/a favorito/a?',
+    ];
+}
+
+function admin_security_question_label(?string $key): string {
+    $key = trim((string)$key);
+    $options = admin_security_questions();
+    return $options[$key] ?? '';
+}
+
+function admin_normalize_security_answer(string $answer): string {
+    $answer = trim(mb_strtolower($answer, 'UTF-8'));
+    $answer = preg_replace('/\s+/u', ' ', $answer);
+    return (string)$answer;
+}
+
+function admin_password_is_strong(string $password): bool {
+    if (strlen($password) < 10) return false;
+    if (!preg_match('/[A-Z]/', $password)) return false;
+    if (!preg_match('/[a-z]/', $password)) return false;
+    if (!preg_match('/\d/', $password)) return false;
+    return true;
+}
+
+function admin_create_security_answer_hash(string $answer): string {
+    return password_hash(admin_normalize_security_answer($answer), PASSWORD_DEFAULT);
+}
+
+function admin_verify_security_answer(string $answer, string $hash): bool {
+    if (trim($hash) === '') return false;
+    return password_verify(admin_normalize_security_answer($answer), $hash);
+}
+
+function admin_find_user_for_password_reset(string $username, string $email): ?array {
+    $cfg = app_config();
+    $bid = (int)$cfg['business_id'];
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT * FROM users WHERE business_id=:bid AND username=:u AND lower(email)=lower(:e) LIMIT 1');
+    $stmt->execute([
+        ':bid' => $bid,
+        ':u' => trim($username),
+        ':e' => trim($email),
+    ]);
+    $user = $stmt->fetch();
+    return $user ?: null;
+}
+
 
 
 function admin_needs_setup(): bool {

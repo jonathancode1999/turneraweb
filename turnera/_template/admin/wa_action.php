@@ -20,18 +20,6 @@ if (!$token || empty($_SESSION['csrf']) || !hash_equals($_SESSION['csrf'], $toke
 
 $pdo = db();
 
-// Ensure reminder_skipped_at column exists (SQLite legacy only)
-if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-  try {
-    $cols = $pdo->query("PRAGMA table_info(appointments)")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    $have = [];
-    foreach ($cols as $c) { $have[$c['name']] = true; }
-    if (!isset($have['reminder_skipped_at'])) {
-      $pdo->exec("ALTER TABLE appointments ADD COLUMN reminder_skipped_at TEXT NULL");
-    }
-  } catch (Throwable $e) {}
-}
-
 $cfg = app_config();
 $bid = (int)($cfg['business_id'] ?? 0);
 $branchId = admin_current_branch_id();

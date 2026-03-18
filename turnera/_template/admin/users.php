@@ -18,6 +18,7 @@ $bizId = (int)$cfg['business_id'];
 ensure_multibranch_schema($pdo);
 
 $branches = branches_all_active();
+$securityQuestions = admin_security_questions();
 
 function read_perm_post(string $k, int $def=0): int {
   return !empty($_POST[$k]) ? 1 : $def;
@@ -29,13 +30,37 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
   if ($action==='create') {
     $u = trim($_POST['username'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $securityQuestion = trim((string)($_POST['security_question'] ?? ''));
+    $securityAnswer = trim((string)($_POST['security_answer'] ?? ''));
     $p = (string)($_POST['password'] ?? '');
+    $p2 = (string)($_POST['password2'] ?? '');
     $role = trim($_POST['role'] ?? 'staff');
     $allBranches = !empty($_POST['all_branches']) ? 1 : 0;
     $selBranches = $_POST['branches'] ?? [];
 
-    if ($u==='' || $p==='') {
-      flash('Usuario/clave requeridos','err');
+    if ($u==='' || $p==='' || $p2==='' || $email==='' || $securityQuestion==='' || $securityAnswer==='') {
+      flash('Completá usuario, correo, contraseña y seguridad.','err');
+      redirect('users.php');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      flash('Ingresá un correo válido.','err');
+      redirect('users.php');
+    }
+    if ($p !== $p2) {
+      flash('Las contraseñas no coinciden.','err');
+      redirect('users.php');
+    }
+    if (!admin_password_is_strong($p)) {
+      flash('La contraseña debe tener al menos 10 caracteres e incluir mayúscula, minúscula y número.','err');
+      redirect('users.php');
+    }
+    if (!isset($securityQuestions[$securityQuestion])) {
+      flash('Elegí una pregunta de seguridad válida.','err');
+      redirect('users.php');
+    }
+    if (mb_strlen($securityAnswer) < 3) {
+      flash('La respuesta de seguridad debe tener al menos 3 caracteres.','err');
       redirect('users.php');
     }
 
@@ -61,14 +86,18 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
 
     $hash = password_hash($p, PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role, is_active, all_branches,
+    $securityHash = admin_create_security_answer_hash($securityAnswer);
+    $stmt = $pdo->prepare("INSERT INTO users (business_id, username, email, password_hash, security_question, security_answer_hash, role, is_active, all_branches,
         can_branches, can_settings, can_appointments, can_barbers, can_services, can_hours, can_blocks, can_system, can_analytics)
-      VALUES (:bid,:u,:h,:r,1,:all,:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8,:p9)");
+      VALUES (:bid,:u,:e,:h,:sq,:sa,:r,1,:all,:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8,:p9)");
     try {
       $stmt->execute([
         ':bid'=>$bizId,
         ':u'=>$u,
+        ':e'=>$email,
         ':h'=>$hash,
+        ':sq'=>$securityQuestion,
+        ':sa'=>$securityHash,
         ':r'=>$role,
         ':all'=>$allBranches,
         ':p1'=>read_perm_post('can_branches',$defaults['can_branches']),
@@ -82,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         ':p9'=>read_perm_post('can_analytics',$defaults['can_analytics']),
       ]);
     } catch (PDOException $e) {
-      // SQLite: UNIQUE constraint -> SQLSTATE[23000]
+      // Username duplicado / unique constraint -> SQLSTATE[23000]
       if ((string)$e->getCode() === '23000') {
         flash('Ese usuario ya existe. Elegí otro nombre.','err');
         redirect('users.php');
@@ -176,7 +205,16 @@ echo '<form method="post" class="form" style="margin-top:10px">';
 csrf_field();
 echo '<input type="hidden" name="action" value="create">';
 echo '<label>Usuario</label><input name="username" required>';
-echo '<label>Contraseña</label><input name="password" type="password" required>';
+echo '<label>Correo</label><input name="email" type="email" required>';
+echo '<label>Pregunta de seguridad</label><select name="security_question" required>';
+echo '<option value="">Elegí una pregunta</option>';
+foreach ($securityQuestions as $key => $label) {
+  echo '<option value="'.h($key).'">'.h($label).'</option>';
+}
+echo '</select>';
+echo '<label>Respuesta de seguridad</label><input name="security_answer" required>';
+echo '<label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="user-password" name="password" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="user-password">👁</button></div>';
+echo '<label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="user-password2" name="password2" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="user-password2">👁</button></div>';
 echo '<label>Rol</label><select name="role"><option value="staff">Staff</option><option value="admin">Admin</option></select>';
 
 echo '<div class="grid2" style="margin-top:10px">';
@@ -215,6 +253,7 @@ echo '</div>';
 
 echo '<button class="btn primary" type="submit">Crear</button>';
 echo '</form>';
+echo '<script>document.querySelectorAll("[data-toggle-password]").forEach(function(button){button.addEventListener("click", function(){var input=document.getElementById(button.getAttribute("data-toggle-password")); if(!input) return; input.type=input.type==="password"?"text":"password";});});</script>';
 echo '</div>';
 
 // List users

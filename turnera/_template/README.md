@@ -1,4 +1,4 @@
-# Turnera v1 (PHP + SQLite) — demo lista para XAMPP / Render
+# Turnera v1 (PHP + MySQL) — demo lista para XAMPP / Render
 
 Incluye:
 - Reserva de turno por servicio
@@ -12,7 +12,7 @@ Incluye:
 1. Copiá la carpeta `turnera_v1` a:
    - `C:\xampp\htdocs\turnera_v1`
 
-2. Dale permisos de escritura a `data/` (en Windows normalmente ya anda). La DB se crea sola.
+2. Configurá una base MySQL y completá las credenciales en `includes/config.php`.
 
 3. Abrí:
    - Cliente: `http://localhost/turnera_v1/public/`
@@ -42,14 +42,14 @@ Cuando lo quieras real:
 
 Render puede correr PHP con Docker.
 - Crear `Dockerfile` + `render.yaml` (lo armamos cuando quieras).
-- SQLite funciona para demo y para pocos clientes; en producción multi-cliente conviene MySQL.
+- La versión actual usa MySQL como base única para demo y producción.
 
 ## 6) Estructura de carpetas
 
 - `public/` sitio cliente
 - `admin/` panel administración
 - `includes/` helpers (db, auth, disponibilidad)
-- `data/` SQLite (se crea `app.sqlite`)
+- `data/` backups y archivos generados
 - `cron/expire_pending.php` script para vencer pendientes
 
 ---

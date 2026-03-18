@@ -8,11 +8,7 @@ return [
     // Single-business demo (multi-tenant ready). Keep as 1 for now.
     'business_id' => 1,
 
-    // SQLite DB file (ensure /data is writable by PHP)
-    // SQLite (deprecated) - kept for compatibility
-    'sqlite_path' => __DIR__ . '/../data/app.sqlite',
-
-    // MySQL connection (recommended for production)
+    // MySQL connection (shared DB; required)
     'db_driver' => 'mysql',
     'mysql_host' => '127.0.0.1',
     'mysql_port' => 3306,

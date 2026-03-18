@@ -14,11 +14,12 @@ $pdo = db();
 $cfg = app_config();
 $bizId = (int)$cfg['business_id'];
 ensure_multibranch_schema($pdo);
+$securityQuestions = admin_security_questions();
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id<=0) redirect('users.php');
 
-$st = $pdo->prepare("SELECT id, username, role, is_active, all_branches,
+$st = $pdo->prepare("SELECT id, username, email, security_question, role, is_active, all_branches,
   can_branches, can_settings, can_appointments, can_barbers, can_services, can_hours, can_blocks, can_system, can_analytics
   FROM users WHERE business_id=:bid AND id=:id LIMIT 1");
 $st->execute([':bid'=>$bizId, ':id'=>$id]);
@@ -33,18 +34,33 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   $sel = $_POST['branches'] ?? [];
   $role = trim($_POST['role'] ?? $user['role']);
   $isActive = !empty($_POST['is_active']) ? 1 : 0;
+  $email = trim((string)($_POST['email'] ?? ''));
+  $securityQuestion = trim((string)($_POST['security_question'] ?? ($user['security_question'] ?? '')));
+  $securityAnswer = trim((string)($_POST['security_answer'] ?? ''));
+
+  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    flash('Ingresá un correo válido.','err');
+    redirect('user_edit.php?id='.$id);
+  }
+  if (!isset($securityQuestions[$securityQuestion])) {
+    flash('Elegí una pregunta de seguridad válida.','err');
+    redirect('user_edit.php?id='.$id);
+  }
+  if ($securityAnswer === '' && $securityQuestion !== (string)($user['security_question'] ?? '')) {
+    flash('Si cambiás la pregunta de seguridad, tenés que cargar una nueva respuesta.','err');
+    redirect('user_edit.php?id='.$id);
+  }
 
   $permKeys = ['can_appointments','can_barbers','can_services','can_hours','can_blocks','can_settings','can_branches','can_analytics','can_system'];
   $permVals = [];
   foreach ($permKeys as $k) $permVals[$k] = !empty($_POST[$k]) ? 1 : 0;
 
-  $pdo->prepare("UPDATE users SET role=:r, is_active=:a, all_branches=:all,
-      can_branches=:p1, can_settings=:p2, can_appointments=:p3, can_barbers=:p4, can_services=:p5, can_hours=:p6, can_blocks=:p7, can_system=:p8, can_analytics=:p9
-    WHERE business_id=:bid AND id=:id")
-    ->execute([
+  $params = [
       ':r'=>$role,
       ':a'=>$isActive,
       ':all'=>$all,
+      ':email'=>$email,
+      ':sq'=>$securityQuestion,
       ':p1'=>$permVals['can_branches'],
       ':p2'=>$permVals['can_settings'],
       ':p3'=>$permVals['can_appointments'],
@@ -56,7 +72,17 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       ':p9'=>$permVals['can_analytics'],
       ':bid'=>$bizId,
       ':id'=>$id,
-    ]);
+  ];
+  $securitySql = '';
+  if ($securityAnswer !== '') {
+    $securitySql = ', security_answer_hash=:sah';
+    $params[':sah'] = admin_create_security_answer_hash($securityAnswer);
+  }
+
+  $pdo->prepare("UPDATE users SET role=:r, is_active=:a, all_branches=:all, email=:email, security_question=:sq{$securitySql},
+      can_branches=:p1, can_settings=:p2, can_appointments=:p3, can_barbers=:p4, can_services=:p5, can_hours=:p6, can_blocks=:p7, can_system=:p8, can_analytics=:p9
+    WHERE business_id=:bid AND id=:id")
+    ->execute($params);
 
   $pdo->prepare("DELETE FROM user_branch_access WHERE business_id=:bid AND user_id=:uid")
     ->execute([':bid'=>$bizId, ':uid'=>$id]);
@@ -90,6 +116,14 @@ echo '<div class="card-title">'.h($user['username']).'</div>';
 echo '<form method="post" class="form" style="margin-top:10px">';
 csrf_field();
 
+echo '<label>Correo</label><input type="email" name="email" value="'.h((string)($user['email'] ?? '')).'" required>';
+echo '<label>Pregunta de seguridad</label><select name="security_question" required>';
+foreach ($securityQuestions as $key => $label) {
+  $selectedOpt = ((string)($user['security_question'] ?? '') === $key) ? ' selected' : '';
+  echo '<option value="'.h($key).'"'.$selectedOpt.'>'.h($label).'</option>';
+}
+echo '</select>';
+echo '<label>Nueva respuesta de seguridad (opcional)</label><input name="security_answer" placeholder="Dejá vacío para conservar la actual">';
 echo '<label>Rol</label><select name="role"><option value="staff"'.(($user['role']==='staff')?' selected':'').'>Staff</option><option value="admin"'.(($user['role']==='admin')?' selected':'').'>Admin</option></select>';
 echo '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="is_active" value="1"'.(((int)$user['is_active'])?' checked':'').'> Activo</label>';
 

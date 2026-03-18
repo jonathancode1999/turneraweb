@@ -180,12 +180,45 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
 
     if($action==='user_add'){
-      $hash = password_hash((string)($_POST['password']??''), PASSWORD_DEFAULT);
-      $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (:bid,:u,:p,:r)")
+      $username = trim((string)($_POST['username']??''));
+      $email = trim((string)($_POST['email']??''));
+      $password = (string)($_POST['password']??'');
+      $password2 = (string)($_POST['password2']??'');
+      $securityQuestion = trim((string)($_POST['security_question'] ?? ''));
+      $securityAnswer = trim((string)($_POST['security_answer'] ?? ''));
+      $questions = admin_security_questions();
+
+      if ($username === '' || $email === '' || $password === '' || $password2 === '' || $securityQuestion === '' || $securityAnswer === '') {
+        flash_set('err','Completá usuario, correo, contraseña y seguridad.');
+        header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
+      }
+      if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        flash_set('err','El correo del usuario no es válido.');
+        header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
+      }
+      if ($password !== $password2) {
+        flash_set('err','Las contraseñas no coinciden.');
+        header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
+      }
+      if (!admin_password_is_strong($password)) {
+        flash_set('err','La contraseña debe tener al menos 10 caracteres e incluir mayúscula, minúscula y número.');
+        header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
+      }
+      if (!isset($questions[$securityQuestion])) {
+        flash_set('err','Elegí una pregunta de seguridad válida.');
+        header('Location: manage.php?c='.urlencode($slug).'&tab=users'); exit;
+      }
+
+      $hash = password_hash($password, PASSWORD_DEFAULT);
+      $securityHash = admin_security_answer_hash($securityAnswer);
+      $pdo->prepare("INSERT INTO users (business_id, username, email, password_hash, security_question, security_answer_hash, role) VALUES (:bid,:u,:e,:p,:sq,:sa,:r)")
           ->execute([
             ':bid'=>$bid,
-            ':u'=>trim($_POST['username']??''),
+            ':u'=>$username,
+            ':e'=>$email,
             ':p'=>$hash,
+            ':sq'=>$securityQuestion,
+            ':sa'=>$securityHash,
             ':r'=>trim($_POST['role']??'admin'),
           ]);
       flash_set('ok','Usuario creado.');
@@ -631,13 +664,25 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     </div>
   </div>
   <div class="col-4">
+    <?php $securityQuestions = admin_security_questions(); ?>
     <div class="card">
       <h3 style="margin:0 0 10px 0;">Agregar</h3>
       <form method="post">
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
         <input type="hidden" name="action" value="user_add">
         <div style="margin-bottom:10px"><label>Usuario</label><input name="username" required></div>
-        <div style="margin-bottom:10px"><label>Contraseña</label><input name="password" type="password" required></div>
+        <div style="margin-bottom:10px"><label>Correo</label><input name="email" type="email" required></div>
+        <div style="margin-bottom:10px"><label>Pregunta de seguridad</label>
+          <select name="security_question" required>
+            <option value="">Elegí una pregunta</option>
+            <?php foreach($securityQuestions as $key => $label): ?>
+              <option value="<?=h($key)?>"><?=h($label)?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div style="margin-bottom:10px"><label>Respuesta de seguridad</label><input name="security_answer" required></div>
+        <div style="margin-bottom:10px"><label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass" name="password" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="manage-user-pass">👁</button></div></div>
+        <div style="margin-bottom:10px"><label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass2" name="password2" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="manage-user-pass2">👁</button></div></div>
         <div style="margin-bottom:12px"><label>Rol</label>
           <select name="role">
             <option value="admin">admin</option>
@@ -649,6 +694,15 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     </div>
   </div>
 </div>
+<script>
+document.querySelectorAll('[data-toggle-password]').forEach(function(button){
+  button.addEventListener('click', function(){
+    var input = document.getElementById(button.getAttribute('data-toggle-password'));
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+});
+</script>
 <?php endif; ?>
 
 <?php if($tab==='ops'): ?>

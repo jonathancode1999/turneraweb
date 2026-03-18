@@ -3,26 +3,10 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/utils.php';
 
 $cfg = app_config();
-$driver = $cfg['db_driver'] ?? 'mysql';
 $dstDir = __DIR__ . '/../data/backups';
 if (!is_dir($dstDir)) mkdir($dstDir, 0777, true);
 
 $ts = date('Ymd_His');
-if ($driver === 'sqlite') {
-  $src = __DIR__ . '/../data/app.sqlite';
-  if (!file_exists($src)) {
-    echo "No DB file\n";
-    exit(1);
-  }
-  $dst = $dstDir . '/app_' . $ts . '.sqlite';
-  if (!copy($src, $dst)) {
-    echo "Copy failed\n";
-    exit(1);
-  }
-  echo "OK: " . basename($dst) . "\n";
-  exit(0);
-}
-
 // MySQL: dump to .sql (requires mysqldump)
 $host = $cfg['mysql_host'] ?? '127.0.0.1';
 $port = (int)($cfg['mysql_port'] ?? 3306);

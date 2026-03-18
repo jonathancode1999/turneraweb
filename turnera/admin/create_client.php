@@ -3,15 +3,40 @@ require __DIR__.'/_inc.php'; require_login(); csrf_check();
 
 $slug = trim($_POST['slug'] ?? '');
 $business = trim($_POST['business_name'] ?? '');
-$adminUser = trim($_POST['admin_user'] ?? 'admin');
+$adminUser = trim($_POST['admin_user'] ?? '');
+$adminEmail = trim($_POST['admin_email'] ?? '');
 $adminPass = (string)($_POST['admin_pass'] ?? '');
+$adminPass2 = (string)($_POST['admin_pass2'] ?? '');
+$securityQuestion = trim((string)($_POST['security_question'] ?? ''));
+$securityAnswer = trim((string)($_POST['security_answer'] ?? ''));
+$securityQuestions = admin_security_questions();
 
-if($slug==='' || $business==='' || $adminUser==='' || $adminPass===''){
+if($slug==='' || $business==='' || $adminUser==='' || $adminEmail==='' || $adminPass==='' || $adminPass2==='' || $securityQuestion==='' || $securityAnswer===''){
   flash_set('err','Campos incompletos.');
   header('Location: dashboard.php'); exit;
 }
 if(!client_slug_valid($slug)){
   flash_set('err','Slug inválido.');
+  header('Location: dashboard.php'); exit;
+}
+if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+  flash_set('err','El correo del admin no es válido.');
+  header('Location: dashboard.php'); exit;
+}
+if ($adminPass !== $adminPass2) {
+  flash_set('err','Las contraseñas del admin no coinciden.');
+  header('Location: dashboard.php'); exit;
+}
+if (!admin_password_is_strong($adminPass)) {
+  flash_set('err','La contraseña debe tener al menos 10 caracteres e incluir mayúscula, minúscula y número.');
+  header('Location: dashboard.php'); exit;
+}
+if (!isset($securityQuestions[$securityQuestion])) {
+  flash_set('err','Elegí una pregunta de seguridad válida.');
+  header('Location: dashboard.php'); exit;
+}
+if (mb_strlen($securityAnswer) < 3) {
+  flash_set('err','La respuesta de seguridad debe tener al menos 3 caracteres.');
   header('Location: dashboard.php'); exit;
 }
 
@@ -96,8 +121,9 @@ try {
 
   // Admin user
   $hash = password_hash($adminPass, PASSWORD_DEFAULT);
-  $pdo->prepare("INSERT INTO users (business_id, username, password_hash, role) VALUES (?,?,?,?)")
-      ->execute([$businessId, $adminUser, $hash, 'admin']);
+  $securityHash = admin_security_answer_hash($securityAnswer);
+  $pdo->prepare("INSERT INTO users (business_id, username, email, password_hash, security_question, security_answer_hash, role) VALUES (?,?,?,?,?,?,?)")
+      ->execute([$businessId, $adminUser, $adminEmail, $hash, $securityQuestion, $securityHash, 'admin']);
 
   // Default hours
   for($wd=0;$wd<=6;$wd++){

@@ -178,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($cnt > 0) {
             $error = 'No se puede eliminar: hay turnos pendientes/activos en esa sucursal.';
         } else {
-            // Borramos datos dependientes primero (sin FK cascade garantizado en SQLite).
+            // Borramos datos dependientes primero para mantener la eliminación controlada.
             $pdo->prepare('DELETE FROM blocks WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
             $pdo->prepare('DELETE FROM barber_hours WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));
             $pdo->prepare('DELETE FROM barber_timeoff WHERE business_id=:bid AND branch_id=:brid')->execute(array(':bid'=>$bizId, ':brid'=>$id));

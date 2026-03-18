@@ -48,10 +48,25 @@ page_head('Admin - Login', 'admin');
   <?php endif; ?>
   <form method="post">
     <label>Usuario</label>
-    <input name="username" required>
+    <input name="username" required autocomplete="username">
     <label>Contraseña</label>
-    <input name="password" type="password" required>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="login-password" name="password" type="password" required autocomplete="current-password" style="flex:1">
+      <button class="btn" type="button" data-toggle-password="login-password" aria-label="Mostrar contraseña">👁</button>
+    </div>
     <button class="btn" type="submit">Entrar</button>
   </form>
+  <div class="muted" style="margin-top:12px">
+    <a class="link" href="forgot_password.php">Olvidé mi contraseña</a>
   </div>
+</div>
+<script>
+document.querySelectorAll('[data-toggle-password]').forEach(function(button){
+  button.addEventListener('click', function(){
+    var input = document.getElementById(button.getAttribute('data-toggle-password'));
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+});
+</script>
 <?php page_foot(); ?>
