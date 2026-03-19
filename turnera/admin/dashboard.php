@@ -26,6 +26,7 @@ $securityQuestions = admin_security_questions();
             $coverPathStmt->execute([$bid]);
             $coverPath=$coverPathStmt->fetchColumn() ?: '';
           } catch(Throwable $e){ $name='(error DB)'; $logoPath=''; $coverPath=''; }
+          if ($slug === '_template' && ($name === '_template' || $name === '(error DB)')) { $name = 'Demo Turnos'; }
           $disabled = client_disabled($slug);
         ?>
           <tr>
@@ -85,7 +86,7 @@ $securityQuestions = admin_security_questions();
         </div>
         <div style="margin-bottom:10px">
           <label>Respuesta de seguridad</label>
-          <input name="security_answer" value="<?=h((string)($_POST['security_answer'] ?? ''))?>" required autocomplete="off">
+          <input name="security_answer" value="<?=h((string)($_POST['security_answer'] ?? ''))?>" required autocomplete="off" minlength="3">
         </div>
         <div style="margin-bottom:12px">
           <label>Contraseña admin</label>

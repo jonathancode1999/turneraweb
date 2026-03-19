@@ -212,7 +212,7 @@ foreach ($securityQuestions as $key => $label) {
   echo '<option value="'.h($key).'">'.h($label).'</option>';
 }
 echo '</select>';
-echo '<label>Respuesta de seguridad</label><input name="security_answer" required>';
+echo '<label>Respuesta de seguridad</label><input name="security_answer" required minlength="3">';
 echo '<label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="user-password" name="password" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="user-password">👁</button></div>';
 echo '<label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="user-password2" name="password2" type="password" required style="flex:1"><button class="btn" type="button" data-toggle-password="user-password2">👁</button></div>';
 echo '<label>Rol</label><select name="role"><option value="staff">Staff</option><option value="admin">Admin</option></select>';

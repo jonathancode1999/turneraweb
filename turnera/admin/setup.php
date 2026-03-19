@@ -1,4 +1,5 @@
 <?php require __DIR__.'/_inc.php';
+if (!super_admin_needs_setup()) { header('Location: login.php'); exit; }
 if (is_logged()) { header('Location: dashboard.php'); exit; }
 $questions = admin_security_questions();
 $defaults = cfg();
@@ -40,10 +41,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   flash_set('ok','Usuario super admin configurado. Ya podés iniciar sesión.');
   header('Location: login.php'); exit;
 }
-header_html(super_admin_needs_setup() ? 'Primer usuario' : 'Reconfigurar acceso');
+header_html('Primer usuario');
 ?>
 <div class="card" style="max-width:620px;margin:0 auto;">
-  <h2 style="margin-top:0"><?= super_admin_needs_setup() ? 'Crear usuario inicial' : 'Reconfigurar usuario super admin' ?></h2>
+  <h2 style="margin-top:0">Crear usuario inicial</h2>
   <p class="small" style="margin-top:0">Definí el usuario principal del panel, su correo de recuperación, la pregunta de seguridad y una contraseña fuerte.</p>
   <form method="post" data-password-pair data-password-input="setup-password" data-confirm-input="setup-password2">
     <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
@@ -85,7 +86,7 @@ header_html(super_admin_needs_setup() ? 'Primer usuario' : 'Reconfigurar acceso'
       </div>
       <div class="password-match match-bad" data-password-match-message aria-live="polite" hidden>Repetí la contraseña para confirmar que coincide.</div>
     </div>
-    <button class="btn btn-primary" type="submit"><?= super_admin_needs_setup() ? 'Crear usuario' : 'Guardar cambios' ?></button>
+    <button class="btn btn-primary" type="submit">Crear usuario</button>
   </form>
 </div>
 <script src="assets/password-ui.js"></script>

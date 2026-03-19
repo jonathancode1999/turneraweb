@@ -364,7 +364,7 @@ function list_clients(): array {
   $root = cfg()['root_dir'];
   $items = array_values(array_filter(scandir($root), function($x) use ($root){
     if($x==='.'||$x==='..') return false;
-    if(in_array($x, ['admin','_template'])) return false;
+    if($x==='admin') return false;
     $p=$root.DIRECTORY_SEPARATOR.$x;
     return is_dir($p) && file_exists($p.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'index.php');
   }));

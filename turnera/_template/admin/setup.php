@@ -112,7 +112,7 @@ page_head('Configurar Admin', 'admin');
       <?php endforeach; ?>
     </select>
     <label>Respuesta de seguridad</label>
-    <input name="security_answer" required maxlength="190" autocomplete="off" value="<?php echo h((string)($_POST['security_answer'] ?? '')); ?>">
+    <input name="security_answer" required minlength="3" maxlength="190" autocomplete="off" value="<?php echo h((string)($_POST['security_answer'] ?? '')); ?>">
     <label>Contraseña</label>
     <div style="display:flex;gap:8px;align-items:center">
       <input id="setup-password" name="password" type="password" required autocomplete="new-password" style="flex:1">

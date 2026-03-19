@@ -680,7 +680,7 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
             <?php endforeach; ?>
           </select>
         </div>
-        <div style="margin-bottom:10px"><label>Respuesta de seguridad</label><input name="security_answer" required></div>
+        <div style="margin-bottom:10px"><label>Respuesta de seguridad</label><input name="security_answer" required minlength="3"></div>
         <div style="margin-bottom:10px"><label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass" name="password" type="password" required style="flex:1"><?=render_password_toggle_button('manage-user-pass')?></div></div>
         <?=render_password_requirements_block()?>
         <div style="margin-bottom:10px"><label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass2" name="password2" type="password" required style="flex:1"><?=render_password_toggle_button('manage-user-pass2')?></div></div>
