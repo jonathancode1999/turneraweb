@@ -5,7 +5,7 @@ $dbPort = (int)(getenv('TURNERA_DB_PORT') ?: 3306);
 $dbName = getenv('TURNERA_DB_NAME') ?: 'turnera_db';
 $dbUser = getenv('TURNERA_DB_USER') ?: 'turnera_user';
 $dbPass = getenv('TURNERA_DB_PASS');
-$dbPass = ($dbPass !== false && $dbPass !== '') ? $dbPass : '';
+$dbPass = ($dbPass !== false && $dbPass !== '') ? $dbPass : '!2000jo1900lb!';
 $dbCharset = getenv('TURNERA_DB_CHARSET') ?: 'utf8mb4';
 
 return [
