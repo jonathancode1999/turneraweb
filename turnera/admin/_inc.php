@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-// Evitar que proxies/CDN cacheen páginas del Super Admin (esto rompe CSRF y sesiones)
 if (!headers_sent()) {
   header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
   header('Pragma: no-cache');
@@ -15,7 +14,6 @@ function cfg(): array {
   return $GLOBALS['__turnera_admin_cfg_cache'];
 }
 
-// Backward-compatible alias (older code called admin_config()).
 function admin_config(): array { return cfg(); }
 
 function sa_pdo(): PDO {
@@ -106,7 +104,7 @@ function save_admin_config(array $patch): void {
     'mysql_charset',
   ];
 
-  $lines = ["<?php", "// Super Admin config", "return ["]; 
+  $lines = ["<?php", "// Super Admin config", "return ["];
   foreach ($keys as $key) {
     if ($key === 'root_dir') {
       $lines[] = "  'root_dir' => {$rootDir},";
@@ -191,12 +189,88 @@ function admin_security_answer_hash(string $answer): string {
   return password_hash(admin_normalize_security_answer($answer), PASSWORD_DEFAULT);
 }
 
+function admin_password_requirements(): array {
+  return [
+    'min_length' => 'Mínimo 10 caracteres.',
+    'uppercase' => 'Al menos una letra mayúscula.',
+    'lowercase' => 'Al menos una letra minúscula.',
+    'number' => 'Al menos un número.',
+    'special' => 'Al menos un caracter especial.',
+    'no_sequence' => 'Sin números consecutivos de 3 dígitos o más.',
+  ];
+}
+
+function admin_password_validation_state(string $password): array {
+  $checks = [
+    'min_length' => mb_strlen($password, 'UTF-8') >= 10,
+    'uppercase' => (bool)preg_match('/\p{Lu}/u', $password),
+    'lowercase' => (bool)preg_match('/\p{Ll}/u', $password),
+    'number' => (bool)preg_match('/\d/', $password),
+    'special' => (bool)preg_match('/[^\p{L}\d\s]/u', $password),
+    'no_sequence' => !admin_password_has_consecutive_numbers($password),
+  ];
+  return $checks;
+}
+
+function admin_password_has_consecutive_numbers(string $password): bool {
+  preg_match_all('/\d+/', $password, $matches);
+  foreach ($matches[0] as $group) {
+    $digits = array_map('intval', str_split($group));
+    $runLength = 1;
+    for ($i = 1, $len = count($digits); $i < $len; $i++) {
+      $diff = $digits[$i] - $digits[$i - 1];
+      if ($diff === 1 || $diff === -1) {
+        $runLength++;
+        if ($runLength >= 3) return true;
+      } else {
+        $runLength = 1;
+      }
+    }
+  }
+  return false;
+}
+
+function admin_password_errors(string $password): array {
+  $labels = admin_password_requirements();
+  $state = admin_password_validation_state($password);
+  $errors = [];
+  foreach ($state as $key => $ok) {
+    if (!$ok && isset($labels[$key])) {
+      $errors[] = $labels[$key];
+    }
+  }
+  return $errors;
+}
+
 function admin_password_is_strong(string $password): bool {
-  if (strlen($password) < 10) return false;
-  if (!preg_match('/[A-Z]/', $password)) return false;
-  if (!preg_match('/[a-z]/', $password)) return false;
-  if (!preg_match('/\d/', $password)) return false;
-  return true;
+  return admin_password_errors($password) === [];
+}
+
+function admin_password_error_message(string $password): string {
+  $errors = admin_password_errors($password);
+  if ($errors === []) {
+    return '';
+  }
+  return 'La contraseña no cumple los requisitos: '.implode(' ', $errors);
+}
+
+function render_password_toggle_button(string $targetId): string {
+  return '<button class="btn toggle-password" type="button" data-toggle-password="'.h($targetId).'" aria-label="Mostrar contraseña" aria-pressed="false">'
+    . '<span class="toggle-password__icon toggle-password__icon--show" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12s-3.8 6.5-10.5 6.5S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>'
+    . '<span class="toggle-password__icon toggle-password__icon--hide" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10.7 5.7A11.8 11.8 0 0 1 12 5.5C18.7 5.5 22.5 12 22.5 12a19.5 19.5 0 0 1-4.3 4.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.1 6.1A19.1 19.1 0 0 0 1.5 12S5.3 18.5 12 18.5c1.7 0 3.2-.4 4.6-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.9 9.9A3.2 3.2 0 0 0 12 15.2c.8 0 1.6-.3 2.1-.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+    . '<span class="toggle-password__text">Mostrar</span>'
+    . '</button>';
+}
+
+function render_password_requirements_block(): string {
+  $items = [];
+  foreach (admin_password_requirements() as $key => $label) {
+    $items[] = '<li class="password-rule" data-rule="'.h($key).'"><span class="password-rule__status" aria-hidden="true"></span><span class="password-rule__text">'.h($label).'</span></li>';
+  }
+  return '<div class="password-requirements" data-password-requirements>'
+    . '<div class="password-requirements__title">La contraseña debe cumplir con todo esto</div>'
+    . '<ul class="password-requirements__list">'.implode('', $items).'</ul>'
+    . '</div>';
 }
 
 function client_slug_valid(string $slug): bool {

@@ -9,10 +9,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $_SESSION['sa_logged']=1;
     flash_set('ok','Bienvenido.');
     header('Location: index.php'); exit;
-  } else {
-    flash_set('err','Credenciales inválidas.');
-    header('Location: login.php'); exit;
   }
+  flash_set('err','Credenciales inválidas.');
+  header('Location: login.php'); exit;
 }
 header_html('Login');
 ?>
@@ -27,7 +26,7 @@ header_html('Login');
       <label>Contraseña</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="login-password" name="p" type="password" autocomplete="current-password" required style="flex:1">
-        <button class="btn toggle-password" type="button" data-toggle-password="login-password" aria-label="Mostrar contraseña" aria-pressed="false">👁</button>
+        <?=render_password_toggle_button('login-password')?>
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Entrar</button>
@@ -37,21 +36,5 @@ header_html('Login');
     <a href="setup.php">Crear o reconfigurar usuario inicial</a>
   </div>
 </div>
-<script>
-(function(){
-  function bindPasswordToggle(button){
-    button.addEventListener('click', function(){
-      var input = document.getElementById(button.getAttribute('data-toggle-password'));
-      if (!input) return;
-      var visible = input.type === 'password';
-      input.type = visible ? 'text' : 'password';
-      button.textContent = visible ? '🙈' : '👁';
-      button.setAttribute('aria-pressed', visible ? 'true' : 'false');
-      button.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-      button.classList.toggle('is-visible', visible);
-    });
-  }
-  document.querySelectorAll('[data-toggle-password]').forEach(bindPasswordToggle);
-})();
-</script>
+<script src="assets/password-ui.js"></script>
 <?php footer_html(); ?>

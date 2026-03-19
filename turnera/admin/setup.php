@@ -24,7 +24,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     header('Location: setup.php'); exit;
   }
   if (!admin_password_is_strong($password)) {
-    flash_set('err','La contraseña debe tener al menos 10 caracteres e incluir mayúscula, minúscula y número.');
+    flash_set('err', admin_password_error_message($password));
     header('Location: setup.php'); exit;
   }
   if (!isset($questions[$securityQuestion])) {
@@ -45,7 +45,7 @@ header_html(super_admin_needs_setup() ? 'Primer usuario' : 'Reconfigurar acceso'
 <div class="card" style="max-width:620px;margin:0 auto;">
   <h2 style="margin-top:0"><?= super_admin_needs_setup() ? 'Crear usuario inicial' : 'Reconfigurar usuario super admin' ?></h2>
   <p class="small" style="margin-top:0">Definí el usuario principal del panel, su correo de recuperación, la pregunta de seguridad y una contraseña fuerte.</p>
-  <form method="post" data-password-pair>
+  <form method="post" data-password-pair data-password-input="setup-password" data-confirm-input="setup-password2">
     <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
     <div style="margin-bottom:10px">
       <label>Usuario</label>
@@ -73,65 +73,20 @@ header_html(super_admin_needs_setup() ? 'Primer usuario' : 'Reconfigurar acceso'
       <label>Contraseña</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="setup-password" name="password" type="password" required autocomplete="new-password" style="flex:1">
-        <button class="btn toggle-password" type="button" data-toggle-password="setup-password" aria-label="Mostrar contraseña" aria-pressed="false">👁</button>
+        <?=render_password_toggle_button('setup-password')?>
       </div>
-      <div class="small" style="margin-top:6px">Usá al menos 10 caracteres, con mayúscula, minúscula y número.</div>
+      <?=render_password_requirements_block()?>
     </div>
     <div style="margin-bottom:10px">
       <label>Repetir contraseña</label>
       <div style="display:flex;gap:8px;align-items:center">
-        <input id="setup-password2" name="password2" type="password" required autocomplete="new-password" style="flex:1" data-password-confirm="#setup-password">
-        <button class="btn toggle-password" type="button" data-toggle-password="setup-password2" aria-label="Mostrar contraseña" aria-pressed="false">👁</button>
+        <input id="setup-password2" name="password2" type="password" required autocomplete="new-password" style="flex:1">
+        <?=render_password_toggle_button('setup-password2')?>
       </div>
-      <div class="small password-match" data-password-match-message aria-live="polite"></div>
+      <div class="password-match match-bad" data-password-match-message aria-live="polite">Repetí la contraseña para confirmar que coincide.</div>
     </div>
     <button class="btn btn-primary" type="submit"><?= super_admin_needs_setup() ? 'Crear usuario' : 'Guardar cambios' ?></button>
   </form>
 </div>
-<script>
-(function(){
-  function bindPasswordToggle(button){
-    button.addEventListener('click', function(){
-      var input = document.getElementById(button.getAttribute('data-toggle-password'));
-      if (!input) return;
-      var visible = input.type === 'password';
-      input.type = visible ? 'text' : 'password';
-      button.textContent = visible ? '🙈' : '👁';
-      button.setAttribute('aria-pressed', visible ? 'true' : 'false');
-      button.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-      button.classList.toggle('is-visible', visible);
-    });
-  }
-
-  function bindPasswordPair(scope){
-    var password = scope.querySelector('input[name="password"]');
-    var confirm = scope.querySelector('[data-password-confirm]');
-    var message = scope.querySelector('[data-password-match-message]');
-    if (!password || !confirm || !message) return;
-    function refresh(){
-      if (!confirm.value) {
-        message.textContent = 'Repetí la contraseña para verificar que coincida.';
-        message.className = 'small password-match';
-        confirm.setCustomValidity('');
-        return;
-      }
-      if (password.value === confirm.value) {
-        message.textContent = 'Las contraseñas coinciden.';
-        message.className = 'small password-match match-ok';
-        confirm.setCustomValidity('');
-      } else {
-        message.textContent = 'Las contraseñas no coinciden todavía.';
-        message.className = 'small password-match match-bad';
-        confirm.setCustomValidity('Las contraseñas no coinciden.');
-      }
-    }
-    password.addEventListener('input', refresh);
-    confirm.addEventListener('input', refresh);
-    refresh();
-  }
-
-  document.querySelectorAll('[data-toggle-password]').forEach(bindPasswordToggle);
-  document.querySelectorAll('[data-password-pair]').forEach(bindPasswordPair);
-})();
-</script>
+<script src="assets/password-ui.js"></script>
 <?php footer_html(); ?>

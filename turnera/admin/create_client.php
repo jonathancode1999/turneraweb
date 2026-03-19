@@ -28,7 +28,7 @@ if ($adminPass !== $adminPass2) {
   header('Location: dashboard.php'); exit;
 }
 if (!admin_password_is_strong($adminPass)) {
-  flash_set('err','La contraseña debe tener al menos 10 caracteres e incluir mayúscula, minúscula y número.');
+  flash_set('err', admin_password_error_message($adminPass));
   header('Location: dashboard.php'); exit;
 }
 if (!isset($securityQuestions[$securityQuestion])) {
