@@ -8,11 +8,11 @@ if (!is_dir($dstDir)) mkdir($dstDir, 0777, true);
 
 $ts = date('Ymd_His');
 // MySQL: dump to .sql (requires mysqldump)
-$host = $cfg['mysql_host'] ?? '127.0.0.1';
-$port = (int)($cfg['mysql_port'] ?? 3306);
-$dbn  = $cfg['mysql_db'] ?? '';
-$user = $cfg['mysql_user'] ?? '';
-$pass = $cfg['mysql_pass'] ?? '';
+$host = $cfg['db_host'] ?? ($cfg['mysql_host'] ?? 'localhost');
+$port = (int)($cfg['db_port'] ?? ($cfg['mysql_port'] ?? 3306));
+$dbn  = $cfg['db_name'] ?? ($cfg['mysql_db'] ?? '');
+$user = $cfg['db_user'] ?? ($cfg['mysql_user'] ?? '');
+$pass = $cfg['db_pass'] ?? ($cfg['mysql_pass'] ?? '');
 $dst = $dstDir . '/db_' . $ts . '.sql';
 
 $bin = trim((string)@shell_exec('command -v mysqldump 2>/dev/null'));

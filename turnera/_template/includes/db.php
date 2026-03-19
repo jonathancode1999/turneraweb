@@ -30,12 +30,16 @@ function db(): PDO {
     if ($pdo) return $pdo;
 
     $cfg = app_config();
-    $host = $cfg['mysql_host'] ?? '127.0.0.1';
-    $port = (int)($cfg['mysql_port'] ?? 3306);
-    $dbn  = $cfg['mysql_db'] ?? '';
-    $user = $cfg['mysql_user'] ?? '';
-    $pass = $cfg['mysql_pass'] ?? '';
-    $charset = $cfg['mysql_charset'] ?? 'utf8mb4';
+    $host = $cfg['db_host'] ?? ($cfg['mysql_host'] ?? 'localhost');
+    $port = (int)($cfg['db_port'] ?? ($cfg['mysql_port'] ?? 3306));
+    $dbn  = $cfg['db_name'] ?? ($cfg['mysql_db'] ?? '');
+    $user = $cfg['db_user'] ?? ($cfg['mysql_user'] ?? '');
+    $pass = $cfg['db_pass'] ?? ($cfg['mysql_pass'] ?? '');
+    $charset = $cfg['db_charset'] ?? ($cfg['mysql_charset'] ?? 'utf8mb4');
+
+    if (!empty($cfg['require_env_secrets']) && trim((string)$pass) === '') {
+        throw new RuntimeException('Falta TURNERA_DB_PASS y require_env_secrets está activo.');
+    }
 
     $dsn = "mysql:host={$host};port={$port};dbname={$dbn};charset={$charset}";
     $pdo = new PDO($dsn, $user, $pass, [

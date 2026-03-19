@@ -1,5 +1,12 @@
 <?php
-session_start();
+$__turneraBootConfig = require __DIR__.'/config.php';
+if (session_status() === PHP_SESSION_NONE) {
+  $sessionName = trim((string)($__turneraBootConfig['session_name'] ?? ''));
+  if ($sessionName !== '') {
+    session_name($sessionName);
+  }
+  session_start();
+}
 
 if (!headers_sent()) {
   header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -20,12 +27,17 @@ function sa_pdo(): PDO {
   static $pdo = null;
   if ($pdo) return $pdo;
   $c = cfg();
-  $host = $c['mysql_host'] ?? '127.0.0.1';
-  $port = (int)($c['mysql_port'] ?? 3306);
-  $dbn  = $c['mysql_db'] ?? '';
-  $user = $c['mysql_user'] ?? '';
-  $pass = $c['mysql_pass'] ?? '';
-  $charset = $c['mysql_charset'] ?? 'utf8mb4';
+  $host = $c['db_host'] ?? ($c['mysql_host'] ?? 'localhost');
+  $port = (int)($c['db_port'] ?? ($c['mysql_port'] ?? 3306));
+  $dbn  = $c['db_name'] ?? ($c['mysql_db'] ?? '');
+  $user = $c['db_user'] ?? ($c['mysql_user'] ?? '');
+  $pass = $c['db_pass'] ?? ($c['mysql_pass'] ?? '');
+  $charset = $c['db_charset'] ?? ($c['mysql_charset'] ?? 'utf8mb4');
+
+  if (!empty($c['require_env_secrets']) && trim((string)$pass) === '') {
+    throw new RuntimeException('Falta TURNERA_DB_PASS y require_env_secrets está activo.');
+  }
+
   $dsn = "mysql:host={$host};port={$port};dbname={$dbn};charset={$charset}";
   $pdo = new PDO($dsn, $user, $pass, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -87,36 +99,42 @@ function login_ok(string $u, string $p): bool {
 function save_admin_config(array $patch): void {
   $current = cfg();
   $config = array_merge($current, $patch);
-  $rootDir = "realpath(__DIR__ . '/..')";
-  $keys = [
-    'super_user',
-    'super_pass',
-    'super_pass_hash',
-    'super_email',
-    'super_security_question',
-    'super_security_answer_hash',
-    'root_dir',
-    'mysql_host',
-    'mysql_port',
-    'mysql_db',
-    'mysql_user',
-    'mysql_pass',
-    'mysql_charset',
-  ];
 
-  $lines = ["<?php", "// Super Admin config", "return ["];
-  foreach ($keys as $key) {
-    if ($key === 'root_dir') {
-      $lines[] = "  'root_dir' => {$rootDir},";
-      continue;
-    }
-    $value = $config[$key] ?? '';
-    $lines[] = '  '.var_export($key, true).' => '.var_export($value, true).',';
+  $content = "<?php\n";
+  $content .= "$" . "requireEnvSecrets = in_array(strtolower((string)getenv('TURNERA_REQUIRE_ENV_SECRETS')), ['1', 'true', 'yes', 'on'], true);\n";
+  $content .= "$" . "dbHost = getenv('TURNERA_DB_HOST') ?: 'localhost';\n";
+  $content .= "$" . "dbPort = (int)(getenv('TURNERA_DB_PORT') ?: 3306);\n";
+  $content .= "$" . "dbName = getenv('TURNERA_DB_NAME') ?: 'turnera_db';\n";
+  $content .= "$" . "dbUser = getenv('TURNERA_DB_USER') ?: 'turnera_user';\n";
+  $content .= "$" . "dbPass = getenv('TURNERA_DB_PASS');\n";
+  $content .= "$" . "dbPass = ($dbPass !== false && $dbPass !== '') ? $dbPass : '';\n";
+  $content .= "$" . "dbCharset = getenv('TURNERA_DB_CHARSET') ?: 'utf8mb4';\n\n";
+  $content .= "return [\n";
+  $content .= "  'base_path' => '',\n\n";
+  foreach (['super_user','super_pass','super_pass_hash','super_email','super_security_question','super_security_answer_hash'] as $key) {
+    $content .= '  '.var_export($key, true).' => '.var_export($config[$key] ?? '', true).",\n";
   }
-  $lines[] = '];';
-  $content = implode(PHP_EOL, $lines).PHP_EOL;
+  $content .= "\n  'root_dir' => realpath(__DIR__ . '/..'),\n\n";
+  $content .= "  'db_host' => $" . "dbHost,\n";
+  $content .= "  'db_port' => $" . "dbPort,\n";
+  $content .= "  'db_name' => $" . "dbName,\n";
+  $content .= "  'db_user' => $" . "dbUser,\n";
+  $content .= "  'db_pass' => $" . "dbPass,\n";
+  $content .= "  'db_charset' => $" . "dbCharset,\n\n";
+  $content .= "  'mysql_host' => $" . "dbHost,\n";
+  $content .= "  'mysql_port' => $" . "dbPort,\n";
+  $content .= "  'mysql_db' => $" . "dbName,\n";
+  $content .= "  'mysql_user' => $" . "dbUser,\n";
+  $content .= "  'mysql_pass' => $" . "dbPass,\n";
+  $content .= "  'mysql_charset' => $" . "dbCharset,\n\n";
+  $content .= "  'auth_secret' => getenv('TURNERA_AUTH_SECRET') ?: '',\n";
+  $content .= "  'require_env_secrets' => $" . "requireEnvSecrets,\n";
+  $content .= "  'session_name' => getenv('TURNERA_SESSION_NAME') ?: 'TURNERA_SUPERADMIN_SESSID',\n";
+  $content .= "  'admin_gate_key' => getenv('TURNERA_ADMIN_GATE_KEY') ?: '',\n";
+  $content .= "];\n";
+
   file_put_contents(__DIR__.'/config.php', $content, LOCK_EX);
-  $GLOBALS['__turnera_admin_cfg_cache'] = $config;
+  $GLOBALS['__turnera_admin_cfg_cache'] = require __DIR__.'/config.php';
 }
 
 function super_admin_update_credentials(string $username, string $email, string $password, string $securityQuestion, string $securityAnswer): void {

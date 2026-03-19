@@ -5,6 +5,11 @@ require_once __DIR__ . '/utils.php';
 
 function session_start_safe(): void {
     if (session_status() === PHP_SESSION_NONE) {
+        $cfg = app_config();
+        $sessionName = trim((string)($cfg['session_name'] ?? ''));
+        if ($sessionName !== '') {
+            session_name($sessionName);
+        }
         session_start();
     }
 }

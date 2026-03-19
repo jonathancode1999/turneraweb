@@ -12,7 +12,7 @@ Incluye:
 1. Copiá la carpeta `turnera_v1` a:
    - `C:\xampp\htdocs\turnera_v1`
 
-2. Configurá una base MySQL y completá las credenciales en `includes/config.php`.
+2. Configurá una base MySQL y cargá las credenciales vía variables de entorno (`TURNERA_DB_HOST`, `TURNERA_DB_PORT`, `TURNERA_DB_NAME`, `TURNERA_DB_USER`, `TURNERA_DB_PASS`). `includes/config.php` ya trae ese patrón con aliases legacy para compatibilidad.
 
 3. Abrí:
    - Cliente: `http://localhost/turnera_v1/public/`

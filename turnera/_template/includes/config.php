@@ -1,21 +1,40 @@
 <?php
-// Basic config for Turnera (multi-rubro: Peluquería / Uñas / Estética)
-// Copy this project into XAMPP htdocs (e.g., C:\xampp\htdocs\turnera) and open http://localhost/turnera/public/
+$requireEnvSecrets = in_array(strtolower((string)getenv('TURNERA_REQUIRE_ENV_SECRETS')), ['1', 'true', 'yes', 'on'], true);
+$dbHost = getenv('TURNERA_DB_HOST') ?: 'localhost';
+$dbPort = (int)(getenv('TURNERA_DB_PORT') ?: 3306);
+$dbName = getenv('TURNERA_DB_NAME') ?: 'turnera_db';
+$dbUser = getenv('TURNERA_DB_USER') ?: 'turnera_user';
+$dbPass = getenv('TURNERA_DB_PASS');
+$dbPass = ($dbPass !== false && $dbPass !== '') ? $dbPass : '';
+$dbCharset = getenv('TURNERA_DB_CHARSET') ?: 'utf8mb4';
 
 return [
     'app_name' => 'Turnera',
+    'base_path' => '',
 
     // Single-business demo (multi-tenant ready). Keep as 1 for now.
     'business_id' => 1,
 
-    // MySQL connection (shared DB; required)
     'db_driver' => 'mysql',
-    'mysql_host' => '127.0.0.1',
-    'mysql_port' => 3306,
-    'mysql_db'   => 'turnera_db',
-    'mysql_user' => 'jondev_user',
-    'mysql_pass' => '-45225755Jo-',
-    'mysql_charset' => 'utf8mb4',
+    'db_host' => $dbHost,
+    'db_port' => $dbPort,
+    'db_name' => $dbName,
+    'db_user' => $dbUser,
+    'db_pass' => $dbPass,
+    'db_charset' => $dbCharset,
+
+    // Alias legacy para compatibilidad con archivos que todavía leen mysql_*.
+    'mysql_host' => $dbHost,
+    'mysql_port' => $dbPort,
+    'mysql_db' => $dbName,
+    'mysql_user' => $dbUser,
+    'mysql_pass' => $dbPass,
+    'mysql_charset' => $dbCharset,
+
+    'auth_secret' => getenv('TURNERA_AUTH_SECRET') ?: '',
+    'require_env_secrets' => $requireEnvSecrets,
+    'session_name' => getenv('TURNERA_CLIENT_ADMIN_SESSION_NAME') ?: 'TURNERA_CLIENT_SESSID',
+    'admin_gate_key' => getenv('TURNERA_ADMIN_GATE_KEY') ?: '',
 
     // Timezone for display and parsing
     'timezone' => 'America/Argentina/Buenos_Aires',
