@@ -158,7 +158,7 @@ function save_admin_config(array $patch): void {
   $content .= "$" . "dbName = getenv('TURNERA_DB_NAME') ?: 'turnera_db';\n";
   $content .= "$" . "dbUser = getenv('TURNERA_DB_USER') ?: 'turnera_user';\n";
   $content .= "$" . "dbPass = getenv('TURNERA_DB_PASS');\n";
-  $content .= "$" . "dbPass = ($dbPass !== false && $dbPass !== '') ? $dbPass : '!2000jo1900lb!';\n";
+  $content .= '$dbPass = ($dbPass !== false && $dbPass !== \'\') ? $dbPass : \'!2000jo1900lb!\';' . "\n";
   $content .= "$" . "dbCharset = getenv('TURNERA_DB_CHARSET') ?: 'utf8mb4';\n\n";
   $content .= "return [\n";
   $content .= "  'base_path' => '',\n\n";

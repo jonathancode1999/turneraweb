@@ -12,7 +12,7 @@ return [
   'base_path' => '',
 
   'super_user' => 'admin',
-  'super_pass' => 'admin', // Solo como fallback legacy; luego del setup se limpia.
+  'super_pass' => 'admin',
   'super_pass_hash' => '',
   'super_email' => '',
   'super_security_question' => '',
@@ -27,7 +27,6 @@ return [
   'db_pass' => $dbPass,
   'db_charset' => $dbCharset,
 
-  // Alias legacy para compatibilidad con el código actual mientras terminamos la migración interna.
   'mysql_host' => $dbHost,
   'mysql_port' => $dbPort,
   'mysql_db' => $dbName,
