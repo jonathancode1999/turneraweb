@@ -102,7 +102,7 @@ $securityQuestions = admin_security_questions();
             <?=render_password_toggle_button('admin-pass2')?>
           </div>
         </div>
-        <div class="password-match match-bad" data-password-match-message aria-live="polite" style="margin:-2px 0 12px 0">Repetí la contraseña para confirmar que coincide.</div>
+        <div class="password-match match-bad" data-password-match-message aria-live="polite" hidden style="margin:-2px 0 12px 0">Repetí la contraseña para confirmar que coincide.</div>
         <button class="btn btn-primary" type="submit">Crear</button>
         <div class="small" style="margin-top:10px">El cliente nuevo se crea con el negocio, la sucursal principal y el admin que cargues vos manualmente.</div>
       </form>

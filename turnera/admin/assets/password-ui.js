@@ -48,13 +48,17 @@
     var requirementsRoot = form.querySelector('[data-password-requirements]');
     var message = form.querySelector('[data-password-match-message]');
     var submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+    var confirmTouched = false;
 
     if (!passwordInput) return;
 
     function refreshRules(){
       var state = passwordState(passwordInput.value || '');
       var allValid = true;
+      var shouldShowRequirements = document.activeElement === passwordInput || (passwordInput.value || '').length > 0;
+
       if (requirementsRoot) {
+        requirementsRoot.hidden = !shouldShowRequirements;
         requirementsRoot.querySelectorAll('[data-rule]').forEach(function(item){
           var rule = item.getAttribute('data-rule');
           var valid = !!state[rule];
@@ -74,6 +78,15 @@
       if (!confirmInput || !message) {
         return allValid;
       }
+
+      var shouldShowMessage = confirmTouched || document.activeElement === confirmInput || confirmInput.value.length > 0 || allValid;
+      message.hidden = !shouldShowMessage;
+
+      if (!shouldShowMessage) {
+        confirmInput.setCustomValidity('Confirmá la contraseña.');
+        return false;
+      }
+
       if (!confirmInput.value) {
         message.textContent = 'Repetí la contraseña para confirmar que coincide.';
         message.classList.remove('match-ok');
@@ -114,7 +127,15 @@
     }
 
     passwordInput.addEventListener('input', refresh);
-    if (confirmInput) confirmInput.addEventListener('input', refresh);
+    passwordInput.addEventListener('focus', refresh);
+    passwordInput.addEventListener('blur', refresh);
+
+    if (confirmInput) {
+      confirmInput.addEventListener('focus', function(){ confirmTouched = true; refresh(); });
+      confirmInput.addEventListener('input', function(){ confirmTouched = true; refresh(); });
+      confirmInput.addEventListener('blur', refresh);
+    }
+
     refresh();
   }
 

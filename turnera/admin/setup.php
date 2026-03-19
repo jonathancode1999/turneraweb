@@ -83,7 +83,7 @@ header_html(super_admin_needs_setup() ? 'Primer usuario' : 'Reconfigurar acceso'
         <input id="setup-password2" name="password2" type="password" required autocomplete="new-password" style="flex:1">
         <?=render_password_toggle_button('setup-password2')?>
       </div>
-      <div class="password-match match-bad" data-password-match-message aria-live="polite">Repetí la contraseña para confirmar que coincide.</div>
+      <div class="password-match match-bad" data-password-match-message aria-live="polite" hidden>Repetí la contraseña para confirmar que coincide.</div>
     </div>
     <button class="btn btn-primary" type="submit"><?= super_admin_needs_setup() ? 'Crear usuario' : 'Guardar cambios' ?></button>
   </form>

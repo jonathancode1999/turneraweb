@@ -684,7 +684,7 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         <div style="margin-bottom:10px"><label>Contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass" name="password" type="password" required style="flex:1"><?=render_password_toggle_button('manage-user-pass')?></div></div>
         <?=render_password_requirements_block()?>
         <div style="margin-bottom:10px"><label>Repetir contraseña</label><div style="display:flex;gap:8px;align-items:center"><input id="manage-user-pass2" name="password2" type="password" required style="flex:1"><?=render_password_toggle_button('manage-user-pass2')?></div></div>
-        <div class="password-match match-bad" data-password-match-message aria-live="polite" style="margin:-2px 0 12px 0">Repetí la contraseña para confirmar que coincide.</div>
+        <div class="password-match match-bad" data-password-match-message aria-live="polite" hidden style="margin:-2px 0 12px 0">Repetí la contraseña para confirmar que coincide.</div>
         <div style="margin-bottom:12px"><label>Rol</label>
           <select name="role">
             <option value="admin">admin</option>

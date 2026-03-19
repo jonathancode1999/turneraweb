@@ -267,7 +267,7 @@ function render_password_requirements_block(): string {
   foreach (admin_password_requirements() as $key => $label) {
     $items[] = '<li class="password-rule" data-rule="'.h($key).'"><span class="password-rule__status" aria-hidden="true"></span><span class="password-rule__text">'.h($label).'</span></li>';
   }
-  return '<div class="password-requirements" data-password-requirements>'
+  return '<div class="password-requirements" data-password-requirements hidden>'
     . '<div class="password-requirements__title">La contraseña debe cumplir con todo esto</div>'
     . '<ul class="password-requirements__list">'.implode('', $items).'</ul>'
     . '</div>';
