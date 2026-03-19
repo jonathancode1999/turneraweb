@@ -25,6 +25,50 @@ function db_mysql_index_exists(PDO $pdo, string $table, string $indexName): bool
     return (int)$stmt->fetchColumn() > 0;
 }
 
+function db_schema_candidate_paths(): array {
+    $root = dirname(__DIR__, 2);
+    return array_values(array_unique([
+        $root . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+        dirname(__DIR__) . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+    ]));
+}
+
+function db_apply_sql_batch(PDO $pdo, string $raw): void {
+    $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw);
+    $raw = preg_replace('#/\*.*?\*/#s', '', $raw) ?? $raw;
+    foreach (explode(';', $raw) as $stmt) {
+        $stmt = trim($stmt);
+        if ($stmt === '' || preg_match('/^(--|#)/', $stmt)) continue;
+        $pdo->exec($stmt);
+    }
+}
+
+function db_bootstrap_schema_if_needed(PDO $pdo): void {
+    if (db_table_exists($pdo, 'businesses') && db_table_exists($pdo, 'users') && db_table_exists($pdo, 'branches')) {
+        return;
+    }
+
+    $imported = false;
+    foreach (db_schema_candidate_paths() as $path) {
+        if (!is_file($path)) continue;
+        $raw = file_get_contents($path);
+        if ($raw === false) {
+            throw new RuntimeException('No se pudo leer el schema inicial: ' . $path);
+        }
+        db_apply_sql_batch($pdo, $raw);
+        $imported = true;
+        break;
+    }
+
+    if ($imported) {
+        foreach (db_schema_candidate_paths() as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+}
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo) return $pdo;
@@ -47,6 +91,7 @@ function db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 
+    db_bootstrap_schema_if_needed($pdo);
     migrate_if_needed($pdo);
     return $pdo;
 }

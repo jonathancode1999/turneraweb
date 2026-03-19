@@ -23,6 +23,56 @@ function cfg(): array {
 
 function admin_config(): array { return cfg(); }
 
+function sa_schema_candidate_paths(): array {
+  $root = cfg()['root_dir'] ?? realpath(__DIR__ . '/..');
+  return array_values(array_unique([
+    $root . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+    $root . DIRECTORY_SEPARATOR . '_template' . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+  ]));
+}
+
+function sa_table_exists(PDO $pdo, string $table): bool {
+  $st = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t");
+  $st->execute([':t' => $table]);
+  return ((int)$st->fetchColumn()) > 0;
+}
+
+function sa_apply_sql_batch(PDO $pdo, string $raw): void {
+  $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw);
+  $raw = preg_replace('#/\*.*?\*/#s', '', $raw) ?? $raw;
+  foreach (explode(';', $raw) as $stmt) {
+    $stmt = trim($stmt);
+    if ($stmt === '' || preg_match('/^(--|#)/', $stmt)) continue;
+    $pdo->exec($stmt);
+  }
+}
+
+function sa_bootstrap_schema_if_needed(PDO $pdo): void {
+  if (sa_table_exists($pdo, 'businesses') && sa_table_exists($pdo, 'users') && sa_table_exists($pdo, 'branches')) {
+    return;
+  }
+
+  $imported = false;
+  foreach (sa_schema_candidate_paths() as $path) {
+    if (!is_file($path)) continue;
+    $raw = file_get_contents($path);
+    if ($raw === false) {
+      throw new RuntimeException('No se pudo leer el schema inicial: ' . $path);
+    }
+    sa_apply_sql_batch($pdo, $raw);
+    $imported = true;
+    break;
+  }
+
+  if ($imported) {
+    foreach (sa_schema_candidate_paths() as $path) {
+      if (is_file($path)) {
+        @unlink($path);
+      }
+    }
+  }
+}
+
 function sa_pdo(): PDO {
   static $pdo = null;
   if ($pdo) return $pdo;
@@ -43,6 +93,7 @@ function sa_pdo(): PDO {
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
   ]);
+  sa_bootstrap_schema_if_needed($pdo);
   return $pdo;
 }
 

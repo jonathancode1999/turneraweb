@@ -72,41 +72,7 @@ rcopy($tpl, $target);
 // Create business in shared MySQL database
 $pdo = sa_pdo();
 
-// Ensure MySQL schema exists
-$schemaFile = cfg()['root_dir'] . DIRECTORY_SEPARATOR . 'schema_mysql.sql';
-if (!file_exists($schemaFile)) {
-  flash_set('err','Falta schema_mysql.sql.');
-  header('Location: dashboard.php'); exit;
-}
-// Apply schema to the shared DB (idempotent).
-// IMPORTANT: avoid executing comment-only chunks which can cause random MySQL 1064 errors.
-$raw = file_get_contents($schemaFile);
-if ($raw === false) {
-  flash_set('err','No se pudo leer schema_mysql.sql.');
-  header('Location: dashboard.php');
-  exit;
-}
-
-// Strip BOM (if any)
-$raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw);
-
-// Remove /* ... */ blocks
-$rawNoBlockComments = preg_replace('#/\*.*?\*/#s', '', $raw);
-
-// Split by ';' and remove single-line comments / empty chunks
-try {
-  foreach (explode(';', $rawNoBlockComments) as $stmt) {
-    $stmt = trim($stmt);
-    if ($stmt === '') continue;
-    // Ignore comment-only chunks
-    if (preg_match('/^(--|#)/', $stmt)) continue;
-    $pdo->exec($stmt);
-  }
-} catch (Exception $e) {
-  flash_set('err', 'Error al aplicar schema_mysql.sql: ' . $e->getMessage());
-  header('Location: dashboard.php');
-  exit;
-}
+// Shared schema bootstrap happens automatically in sa_pdo() on first successful connection.
 
 $pdo->beginTransaction();
 try {
