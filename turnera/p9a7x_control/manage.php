@@ -36,12 +36,12 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   $action = $_POST['action'] ?? '';
   try{
     if($action==='save_business'){
-      // Optional branding uploads (logo/cover) saved into client public/uploads/branding
+      // Optional branding uploads (logo/cover) saved into client uploads/branding
       // Nota: si Nginx devuelve 413 (Request Entity Too Large), es un límite del servidor
       // (client_max_body_size). Aumentalo en tu site conf, p.ej. 8M o 20M.
       $logo = $biz['logo_path'] ?? '';
       $cover = $biz['cover_path'] ?? '';
-      $clientUploads = client_dir($slug) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'branding';
+      $clientUploads = client_dir($slug) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'branding';
       if(!is_dir($clientUploads)) @mkdir($clientUploads, 0777, true);
 
       $save_img = function(string $field, string $prefix) use ($clientUploads, $slug): ?string {
@@ -387,13 +387,13 @@ header_html('Gestionar: '.$slug);
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <?php if(!empty($biz['logo_path'])): ?>
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-              <img src="../<?=h($slug)?>/public/<?=h($biz['logo_path'])?>" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb" alt="logo">
+              <img src="../<?=h($slug)?>/<?=h($biz['logo_path'])?>" style="width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb" alt="logo">
               <span class="small"><?=h($biz['logo_path'])?></span>
             </div>
           <?php endif; ?>
           <?php if(!empty($biz['cover_path'])): ?>
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-              <img src="../<?=h($slug)?>/public/<?=h($biz['cover_path'])?>" style="width:180px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb" alt="cover">
+              <img src="../<?=h($slug)?>/<?=h($biz['cover_path'])?>" style="width:180px;height:72px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb" alt="cover">
               <span class="small"><?=h($biz['cover_path'])?></span>
             </div>
           <?php endif; ?>
@@ -714,7 +714,7 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         <input type="hidden" name="csrf" value="<?=h(csrf_token())?>">
         <input type="hidden" name="action" value="backup">
         <button class="btn">Crear backup</button>
-        <div class="small" style="margin-top:6px">Se guarda en <code>admin/backups/</code></div>
+        <div class="small" style="margin-top:6px">Se guarda en <code>p9a7x_control/backups/</code></div>
       </form>
       <?php
         $backupDir = __DIR__ . DIRECTORY_SEPARATOR . 'backups';
@@ -750,8 +750,8 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
       </div>
       <div class="small">Links rápidos:</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <a class="btn" target="_blank" href="../<?=h($slug)?>/public/">Abrir sitio</a>
-        <a class="btn" target="_blank" href="../<?=h($slug)?>/admin/">Abrir admin</a>
+        <a class="btn" target="_blank" href="../<?=h($slug)?>/">Abrir sitio</a>
+        <a class="btn" target="_blank" href="../<?=h($slug)?>/p9a7x_control/">Abrir admin</a>
       </div>
     </div>
   </div>

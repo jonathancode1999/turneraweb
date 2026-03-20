@@ -30,7 +30,7 @@ function mp_cfg(): array {
     // Final fallback: guess redirect URI for this client install (recommended)
     if ($redirectUri === '') {
         $base = mp_guess_base_url_for_client();
-        if ($base !== '') $redirectUri = rtrim($base, '/') . '/admin/mp_callback.php';
+        if ($base !== '') $redirectUri = rtrim($base, '/') . '/p9a7x_control/mp_callback.php';
     }
 
     return [
@@ -41,16 +41,8 @@ function mp_cfg(): array {
 }
 
 function mp_guess_base_url_for_client(): string {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if ($host === '') return '';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    // Expect /.../<client>/public/pay.php or /.../<client>/admin/...
-    $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
-    // remove /public or /admin
-    if (substr($dir, -7) === '/public') $dir = substr($dir, 0, -7);
-    if (substr($dir, -6) === '/admin') $dir = substr($dir, 0, -6);
-    return $scheme . '://' . $host . $dir;
+    if (empty($_SERVER['HTTP_HOST'])) return '';
+    return rtrim(base_url(), '/');
 }
 
 function mp_api_request(string $method, string $url, string $accessToken, ?array $jsonBody = null): array {
@@ -161,8 +153,8 @@ function mp_create_preference(PDO $pdo, int $businessId, array $appointment, arr
     if ($base === '') $base = rtrim(mp_guess_base_url_for_client(), '/');
 
     $token = (string)($appointment['token'] ?? '');
-    $back = $base . '/public/mp_return.php?token=' . urlencode($token);
-    $notify = $base . '/public/mp_webhook.php';
+    $back = $base . '/mp_return.php?token=' . urlencode($token);
+    $notify = $base . '/mp_webhook.php';
 
     $amount = (int)($appointment['payment_amount_ars'] ?? 0);
     $title = 'Turno: ' . (string)($service['name'] ?? 'Servicio');

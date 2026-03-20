@@ -52,7 +52,7 @@ header_html('MercadoPago (técnico)');
   <p class="muted">
     Esto se configura una sola vez para el servidor. El cliente solo hace “Conectar MercadoPago”.
     <br>Si dejás <b>Redirect URI</b> vacío, el sistema lo va a intentar deducir automáticamente por cada cliente:
-    <code>https://&lt;dominio&gt;/&lt;cliente&gt;/admin/mp_callback.php</code>
+    <code>https://&lt;dominio&gt;/&lt;cliente&gt;/p9a7x_control/mp_callback.php</code>
   </p>
 
   <form method="post">
@@ -64,7 +64,7 @@ header_html('MercadoPago (técnico)');
     <input type="text" name="mp_client_secret" value="<?php echo h($csec); ?>" placeholder="APP_USR-...">
 
     <label style="margin-top:10px;">MP_REDIRECT_URI (opcional)</label>
-    <input type="text" name="mp_redirect_uri" value="<?php echo h($ruri); ?>" placeholder="https://tudominio.com/cliente/admin/mp_callback.php">
+    <input type="text" name="mp_redirect_uri" value="<?php echo h($ruri); ?>" placeholder="https://tudominio.com/cliente/p9a7x_control/mp_callback.php">
 
     <div style="margin-top:12px;display:flex;gap:10px;">
       <button class="btn" type="submit">Guardar</button>

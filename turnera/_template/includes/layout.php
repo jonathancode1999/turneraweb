@@ -2,6 +2,12 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/utils.php';
 
+function asset_url(string $path): string {
+    $script = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $prefix = (strpos($script, '/' . trim(app_admin_dir_name(), '/') . '/') !== false) ? '../assets/' : 'assets/';
+    return $prefix . ltrim($path, '/');
+}
+
 function page_head(string $title, string $bodyClass = '', ?string $headerHtml = null): void {
     $cfg = app_config();
     // Load theme variables (editable in Admin → Configuración).
@@ -27,7 +33,7 @@ function page_head(string $title, string $bodyClass = '', ?string $headerHtml = 
     // Cache-bust CSS so mobile/layout fixes apply immediately on localhost/hostings.
     $cssPathFs = __DIR__ . '/../assets/app.css';
     $cssVer = is_file($cssPathFs) ? (string)filemtime($cssPathFs) : (string)time();
-    echo "<link rel=\"stylesheet\" href=\"../assets/app.css?v=" . h($cssVer) . "\">\n";
+    echo "<link rel=\"stylesheet\" href=\"" . h(asset_url('app.css')) . "?v=" . h($cssVer) . "\">\n";
     echo "<style>:root{--primary:" . h($themePrimary) . ";--accent:" . h($themeAccent) . ";}</style>\n";
     $cls = $bodyClass ? ' class="' . h($bodyClass) . '"' : '';
     echo "</head><body$cls><div class=\"container\">
@@ -48,7 +54,7 @@ function page_foot(): void {
     echo "<footer class=\"footer\">&copy; $year Turnera</footer>";
     $jsPathFs = __DIR__ . '/../assets/admin.js';
     $jsVer = is_file($jsPathFs) ? (string)filemtime($jsPathFs) : (string)time();
-    echo "<script src=\"../assets/admin.js?v=" . h($jsVer) . "\"></script>";
+    echo "<script src=\"" . h(asset_url('admin.js')) . "?v=" . h($jsVer) . "\"></script>";
     echo "</div></body></html>";
 }
 

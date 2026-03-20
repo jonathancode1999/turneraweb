@@ -150,13 +150,13 @@ function notify_event(string $event, array $business, array $appt, array $extra 
     if ($token !== '') {
         $base = rtrim((string)($business['public_base_url'] ?? ''), '/');
         if ($base !== '') {
-            $manageUrl = $base . '/public/manage.php?token=' . rawurlencode($token);
+            $manageUrl = $base . '/manage.php?token=' . rawurlencode($token);
         } elseif (!empty($_SERVER['HTTP_HOST'])) {
             // Build from current request (works on local XAMPP/admin)
             $manageUrl = public_url('manage.php?token=' . rawurlencode($token));
         } else {
             // Fallback for CLI/cron
-            $manageUrl = 'public/manage.php?token=' . rawurlencode($token);
+            $manageUrl = 'manage.php?token=' . rawurlencode($token);
         }
     }
 
@@ -164,7 +164,7 @@ function notify_event(string $event, array $business, array $appt, array $extra 
     $ownerManageUrl = '';
     if (!empty($appt['id'])) {
         try {
-            $ownerManageUrl = rtrim(base_url(), '/') . '/admin/appointment.php?id=' . rawurlencode((string)$appt['id']);
+            $ownerManageUrl = rtrim(base_url(), '/') . '/p9a7x_control/appointment.php?id=' . rawurlencode((string)$appt['id']);
         } catch (Throwable $e) {
             $ownerManageUrl = '';
         }

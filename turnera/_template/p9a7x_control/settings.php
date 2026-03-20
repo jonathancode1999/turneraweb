@@ -89,13 +89,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $logoPath = (string)($bizBefore['logo_path'] ?? '');
     $coverPath = (string)($bizBefore['cover_path'] ?? '');
     if (isset($_FILES['logo']) && is_array($_FILES['logo']) && ($_FILES['logo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-      $dir = __DIR__ . '/../public/uploads/branding';
+      $dir = __DIR__ . '/../uploads/branding';
       $rel = upload_image_from_field('logo', $dir, 'logo_' . $bid, 4 * 1024 * 1024);
       if ($rel) $logoPath = $rel;
     }
 
     if (isset($_FILES['cover']) && is_array($_FILES['cover']) && ($_FILES['cover']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-      $dir = __DIR__ . '/../public/uploads/branding';
+      $dir = __DIR__ . '/../uploads/branding';
       $rel = upload_image_from_field('cover', $dir, 'cover_' . $bid, 4 * 1024 * 1024);
       if ($rel) $coverPath = $rel;
     }
@@ -264,7 +264,7 @@ admin_nav('settings');
         <p class="muted small">PNG/JPG/WEBP. Si subís uno nuevo, reemplaza al anterior.</p>
         <?php if (!empty($biz['logo_path'])): ?>
           <div class="logo-preview">
-            <img src="../public/<?php echo h($biz['logo_path']); ?>" alt="Logo actual">
+            <img src="../<?php echo h($biz['logo_path']); ?>" alt="Logo actual">
           </div>
         <?php endif; ?>
       </div>
@@ -275,7 +275,7 @@ admin_nav('settings');
         <p class="muted small">Una sola imagen grande (PNG/JPG/WEBP). Se muestra arriba de la página pública.</p>
         <?php if (!empty($biz['cover_path'])): ?>
           <div class="logo-preview" style="max-width:520px">
-            <img src="../public/<?php echo h($biz['cover_path']); ?>" alt="Portada actual" style="width:100%;height:auto">
+            <img src="../<?php echo h($biz['cover_path']); ?>" alt="Portada actual" style="width:100%;height:auto">
           </div>
         <?php endif; ?>
       </div>

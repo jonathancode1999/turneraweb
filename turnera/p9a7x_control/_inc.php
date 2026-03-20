@@ -33,6 +33,14 @@ function admin_template_dir(): string {
   return admin_app_dir() . DIRECTORY_SEPARATOR . '_template';
 }
 
+function admin_client_control_dir(): string {
+  return 'p9a7x_control';
+}
+
+function admin_client_legacy_control_dir(): string {
+  return 'admin';
+}
+
 function admin_recursive_copy(string $src, string $dst): void {
   if (!is_dir($dst)) {
     mkdir($dst, 0777, true);
@@ -54,11 +62,76 @@ function admin_recursive_copy(string $src, string $dst): void {
   closedir($dir);
 }
 
+function admin_recursive_move_contents(string $src, string $dst): void {
+  if (!is_dir($src)) {
+    return;
+  }
+  if (!is_dir($dst)) {
+    mkdir($dst, 0777, true);
+  }
+  $items = scandir($src);
+  if ($items === false) {
+    return;
+  }
+  foreach ($items as $item) {
+    if ($item === '.' || $item === '..') continue;
+    $from = $src . DIRECTORY_SEPARATOR . $item;
+    $to = $dst . DIRECTORY_SEPARATOR . $item;
+    if (is_dir($from)) {
+      if (is_dir($to)) {
+        admin_recursive_move_contents($from, $to);
+        @rmdir($from);
+      } else {
+        @rename($from, $to);
+      }
+      continue;
+    }
+    if (file_exists($to)) {
+      @unlink($to);
+    }
+    @rename($from, $to);
+  }
+  @rmdir($src);
+}
+
+function admin_normalize_client_layout(string $target): void {
+  if (!is_dir($target)) {
+    return;
+  }
+
+  $legacyPublicDir = $target . DIRECTORY_SEPARATOR . 'public';
+  if (is_dir($legacyPublicDir)) {
+    admin_recursive_move_contents($legacyPublicDir, $target);
+  }
+
+  $legacyAdminDir = $target . DIRECTORY_SEPARATOR . admin_client_legacy_control_dir();
+  $clientControlDir = $target . DIRECTORY_SEPARATOR . admin_client_control_dir();
+  if (is_dir($legacyAdminDir)) {
+    if (is_dir($clientControlDir)) {
+      admin_recursive_move_contents($legacyAdminDir, $clientControlDir);
+    } else {
+      @rename($legacyAdminDir, $clientControlDir);
+    }
+  }
+}
+
+function admin_client_ready(string $target): bool {
+  return is_dir($target)
+    && is_file($target . DIRECTORY_SEPARATOR . 'index.php')
+    && is_dir($target . DIRECTORY_SEPARATOR . 'includes')
+    && is_file($target . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'config.php')
+    && is_dir($target . DIRECTORY_SEPARATOR . admin_client_control_dir())
+    && is_file($target . DIRECTORY_SEPARATOR . admin_client_control_dir() . DIRECTORY_SEPARATOR . 'index.php');
+}
+
 function ensure_demo_client_exists(): void {
   $demoSlug = admin_demo_slug();
   $target = client_dir($demoSlug);
-  if (is_dir($target) && file_exists($target . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'index.php')) {
-    return;
+  if (is_dir($target)) {
+    admin_normalize_client_layout($target);
+    if (admin_client_ready($target)) {
+      return;
+    }
   }
 
   $templateDir = admin_template_dir();
@@ -67,6 +140,7 @@ function ensure_demo_client_exists(): void {
   }
 
   admin_recursive_copy($templateDir, $target);
+  admin_normalize_client_layout($target);
 }
 
 function sa_schema_candidate_paths(): array {
@@ -411,12 +485,22 @@ function list_clients(): array {
   ensure_demo_client_exists();
   $root = cfg()['root_dir'];
   $appBase = basename(admin_app_dir());
-  $items = array_values(array_filter(scandir($root), function($x) use ($root, $appBase){
-    if($x==='.'||$x==='..') return false;
-    if($x===$appBase) return false;
-    $p=$root.DIRECTORY_SEPARATOR.$x;
-    return is_dir($p) && file_exists($p.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'index.php');
-  }));
+  $items = [];
+  $scan = scandir($root);
+  if ($scan === false) {
+    return $items;
+  }
+  foreach ($scan as $x) {
+    if ($x === '.' || $x === '..') continue;
+    if ($x === $appBase) continue;
+    $p = $root . DIRECTORY_SEPARATOR . $x;
+    if (!is_dir($p)) continue;
+    if (!is_file($p . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'config.php')) continue;
+    admin_normalize_client_layout($p);
+    if (admin_client_ready($p)) {
+      $items[] = $x;
+    }
+  }
   sort($items);
   return $items;
 }

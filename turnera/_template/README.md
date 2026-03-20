@@ -15,8 +15,8 @@ Incluye:
 2. Configurá una base MySQL y cargá las credenciales vía variables de entorno (`TURNERA_DB_HOST`, `TURNERA_DB_PORT`, `TURNERA_DB_NAME`, `TURNERA_DB_USER`, `TURNERA_DB_PASS`). `includes/config.php` ya trae ese patrón con aliases legacy para compatibilidad.
 
 3. Abrí:
-   - Cliente: `http://localhost/turnera_v1/public/`
-   - Admin: `http://localhost/turnera_v1/admin/login.php`
+   - Cliente: `http://localhost/turnera_v1/`
+   - Admin: `http://localhost/turnera_v1/p9a7x_control/login.php`
 
 4. Credenciales demo:
    - Usuario: `admin`
@@ -46,8 +46,8 @@ Render puede correr PHP con Docker.
 
 ## 6) Estructura de carpetas
 
-- `public/` sitio cliente
-- `admin/` panel administración
+- `/` sitio cliente (archivos en la raíz del cliente)
+- `p9a7x_control/` panel administración
 - `includes/` helpers (db, auth, disponibilidad)
 - `data/` backups y archivos generados
 - `cron/expire_pending.php` script para vencer pendientes

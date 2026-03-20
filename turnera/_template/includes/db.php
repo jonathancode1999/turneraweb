@@ -663,10 +663,10 @@ function seed_demo_data(PDO $pdo): void {
     }
 
     $services = [
-        ['Corte', 'Corte clásico o moderno. Incluye lavado y terminación.', 30, 12000, '../assets/services/corte.svg'],
-        ['Corte + Barba', 'Combo completo: corte + perfilado/arreglo de barba.', 60, 18000, '../assets/services/corte_barba.svg'],
-        ['Barba', 'Perfilado y arreglo de barba. Incluye toalla caliente.', 30, 9000, '../assets/services/barba.svg'],
-        ['Tintura', 'Color / decoloración. Consultá por tonos y mantenimiento.', 90, 25000, '../assets/services/tintura.svg'],
+        ['Corte', 'Corte clásico o moderno. Incluye lavado y terminación.', 30, 12000, 'assets/services/corte.svg'],
+        ['Corte + Barba', 'Combo completo: corte + perfilado/arreglo de barba.', 60, 18000, 'assets/services/corte_barba.svg'],
+        ['Barba', 'Perfilado y arreglo de barba. Incluye toalla caliente.', 30, 9000, 'assets/services/barba.svg'],
+        ['Tintura', 'Color / decoloración. Consultá por tonos y mantenimiento.', 90, 25000, 'assets/services/tintura.svg'],
     ];
     $stmt = $pdo->prepare('INSERT INTO services (business_id, name, description, duration_minutes, price_ars, image_url, is_active)
                            VALUES (1, :n, :desc, :d, :p, :img, 1)');

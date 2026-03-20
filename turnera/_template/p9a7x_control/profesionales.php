@@ -23,8 +23,8 @@ $error = '';
 
 // Helpers
 function prof_upload_dir(): string {
-    // Keep assets under /public/uploads/profesionales
-    return __DIR__ . '/../public/uploads/profesionales';
+    // Keep assets under /uploads/profesionales
+    return __DIR__ . '/../uploads/profesionales';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -209,7 +209,7 @@ admin_nav('profesionales');
                   $initials = strtoupper(substr(preg_replace('/\s+/', '', (string)$p['name']), 0, 2));
                 ?>
                 <?php if ($av !== ''): ?>
-                  <img src="../public/<?php echo h($av); ?>" alt="" style="width:34px;height:34px;border-radius:999px;object-fit:cover;border:1px solid #e5e7eb">
+                  <img src="../<?php echo h($av); ?>" alt="" style="width:34px;height:34px;border-radius:999px;object-fit:cover;border:1px solid #e5e7eb">
                 <?php else: ?>
                   <div style="width:34px;height:34px;border-radius:999px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-weight:700;color:#111"><?php echo h($initials); ?></div>
                 <?php endif; ?>

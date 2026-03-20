@@ -69,15 +69,8 @@ function wa_default_template(string $eventKey): string {
 
 
 function wa_guess_base_url_for_client(): string {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if ($host === '') return '';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    // Expect /.../<client>/admin/whatsapp_send.php
-    $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
-    // remove /admin
-    if (substr($dir, -6) === '/admin') $dir = substr($dir, 0, -6);
-    return $scheme . '://' . $host . $dir;
+    if (empty($_SERVER['HTTP_HOST'])) return '';
+    return rtrim(base_url(), '/');
 }
 
 function wa_build_message(PDO $pdo, array $appointment, array $branch, string $eventKey): string {
@@ -102,7 +95,7 @@ function wa_build_message(PDO $pdo, array $appointment, array $branch, string $e
         $cfg = app_config();
         $base = rtrim((string)($cfg['public_base_url'] ?? ''), '/');
         if ($base === '') $base = rtrim(wa_guess_base_url_for_client(), '/');
-        if ($base !== '') $manageUrl = $base . '/public/manage.php?token=' . urlencode((string)$appointment['token']);
+        if ($base !== '') $manageUrl = $base . '/manage.php?token=' . urlencode((string)$appointment['token']);
     }
 
     $repl = [

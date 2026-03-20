@@ -73,20 +73,30 @@ function redirect(string $url): void {
     exit;
 }
 
+function app_admin_dir_name(): string {
+    return (string)(app_config()['admin_dir'] ?? 'p9a7x_control');
+}
+
 function base_url(): string {
     // Works for local XAMPP and Render. Not perfect behind proxies, but ok for v1.
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $scheme = $https ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    // script like /turnera/public/index.php -> base /turnera
-    $root = preg_replace('#/public/.*$#', '', $script);
-    $root = $root === '' ? '' : $root;
+    $script = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $adminDir = '/' . trim(app_admin_dir_name(), '/') . '/';
+
+    if ($script !== '' && strpos($script, $adminDir) !== false) {
+        $root = substr($script, 0, (int)strpos($script, $adminDir));
+    } else {
+        $root = rtrim(str_replace('\\', '/', dirname($script)), '/');
+        if ($root === '.' || $root == '/') $root = '';
+    }
+
     return $scheme . '://' . $host . $root;
 }
 
 function public_url(string $path): string {
-    return rtrim(base_url(), '/') . '/public/' . ltrim($path, '/');
+    return rtrim(base_url(), '/') . '/' . ltrim($path, '/');
 }
 
 // --- Flash messages (session) ---

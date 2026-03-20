@@ -35,6 +35,7 @@ return [
     'require_env_secrets' => $requireEnvSecrets,
     'session_name' => getenv('TURNERA_CLIENT_ADMIN_SESSION_NAME') ?: 'TURNERA_CLIENT_SESSID',
     'admin_gate_key' => getenv('TURNERA_ADMIN_GATE_KEY') ?: '',
+    'admin_dir' => 'p9a7x_control',
 
     // Timezone for display and parsing
     'timezone' => 'America/Argentina/Buenos_Aires',

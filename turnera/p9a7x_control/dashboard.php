@@ -36,8 +36,8 @@ $securityQuestions = admin_security_questions();
             <td>
               <div class="btn-row">
                 <a class="btn" href="manage.php?c=<?=urlencode($slug)?>">Gestionar</a>
-                <a class="btn" target="_blank" href="../<?=h($slug)?>/public/">Abrir sitio</a>
-                <a class="btn" target="_blank" href="../<?=h($slug)?>/admin/">Abrir admin</a>
+                <a class="btn" target="_blank" href="../<?=h($slug)?>/">Abrir sitio</a>
+                <a class="btn" target="_blank" href="../<?=h($slug)?>/p9a7x_control/">Abrir admin</a>
               </div>
             </td>
           </tr>

@@ -10,20 +10,21 @@ $filesToCopy = [
   'includes/db.php',
   'includes/service_profesionales.php',
   'includes/timeline.php',
-  'public/index.php',
-  'public/create_booking.php',
-  'public/manage.php',
-  'public/api.php',
-  'admin/dashboard.php',
-  'admin/profesionales.php',
-  'admin/barber_edit.php',
-  'admin/blocks.php',
-  'admin/analytics.php',
-  'admin/wa_action.php',
+  'index.php',
+  'create_booking.php',
+  'manage.php',
+  'api.php',
+  'p9a7x_control/dashboard.php',
+  'p9a7x_control/profesionales.php',
+  'p9a7x_control/barber_edit.php',
+  'p9a7x_control/blocks.php',
+  'p9a7x_control/analytics.php',
+  'p9a7x_control/wa_action.php',
 ];
 
 function is_client_dir(string $dir): bool {
-  return is_dir($dir . '/includes') && is_file($dir . '/includes/config.php') && is_dir($dir . '/public');
+  admin_normalize_client_layout($dir);
+  return is_dir($dir . '/includes') && is_file($dir . '/includes/config.php') && is_file($dir . '/index.php') && is_dir($dir . '/' . admin_client_control_dir());
 }
 
 $clients = [];
@@ -31,7 +32,7 @@ $dh = opendir($root);
 if ($dh) {
   while (($name = readdir($dh)) !== false) {
     if ($name === '.' || $name === '..') continue;
-    if ($name === 'admin' || $name === '_template') continue;
+    if ($name === admin_client_control_dir() || $name === '_template') continue;
     $full = $root . DIRECTORY_SEPARATOR . $name;
     if (is_dir($full) && is_client_dir($full)) $clients[] = $name;
   }

@@ -1,8 +1,8 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/utils.php';
-require_once __DIR__ . '/../includes/mercadopago.php';
-require_once __DIR__ . '/../includes/timeline.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/utils.php';
+require_once __DIR__ . '/includes/mercadopago.php';
+require_once __DIR__ . '/includes/timeline.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];

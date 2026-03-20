@@ -224,8 +224,7 @@ foreach ($branches as $b) {
     elseif (!empty($biz['logo_path'])) $logo = (string)$biz['logo_path'];
 	    if ($logo !== '') {
 	        $src = ltrim((string)$logo, '/');
-	        if (strpos($src, 'public/') !== 0) $src = 'public/' . $src;
-	        echo '<div class="branch-logo"><img src="../' . h($src) . '" alt="Logo" /></div>';
+		        echo '<div class="branch-logo"><img src="../' . h($src) . '" alt="Logo" /></div>';
 	    }
 	    $title = (string)$b['name'];
     if (trim($title)==='Sucursal Principal' && !empty($biz['name'])) { $title = (string)$biz['name']; }

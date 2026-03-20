@@ -1,5 +1,5 @@
 <?php
-$systemPath = 'turnera/admin/login.php';
+$systemPath = 'turnera/p9a7x_control/login.php';
 ?>
 <!doctype html>
 <html lang="es">
@@ -209,7 +209,7 @@ $systemPath = 'turnera/admin/login.php';
 
     <div class="footer-note">
       <strong>Acceso al sistema:</strong> el panel quedó dentro de la carpeta <code>/turnera</code>.
-      Si querés entrar directo al administrador, usá <code>/turnera/admin/login.php</code>.
+      Si querés entrar directo al administrador, usá <code>/turnera/p9a7x_control/login.php</code>.
     </div>
   </div>
 </body>

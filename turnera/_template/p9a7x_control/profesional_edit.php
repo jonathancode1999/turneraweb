@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($capacity < 1) $capacity = 1;
             if ($capacity > 10) $capacity = 10;
 
-            $uploadsDir = __DIR__ . '/../public/uploads/profesionales';
+            $uploadsDir = __DIR__ . '/../uploads/profesionales';
             @mkdir($uploadsDir, 0775, true);
             $newAvatar = upload_image_from_field('avatar_file', $uploadsDir, 'prof_' . $professionalId . '_avatar', 4 * 1024 * 1024);
             $newCover  = upload_image_from_field('cover_file',  $uploadsDir, 'prof_' . $professionalId . '_cover',  6 * 1024 * 1024);
@@ -202,14 +202,14 @@ admin_nav('profesionales');
       <label>Avatar (opcional)</label>
       <input type="file" name="avatar_file" accept="image/*">
       <?php if (!empty($prof['avatar_path'])): ?>
-        <div class="small muted" style="margin-top:6px">Actual: <a href="../public/<?php echo h($prof['avatar_path']); ?>" target="_blank" rel="noopener">ver</a></div>
+        <div class="small muted" style="margin-top:6px">Actual: <a href="../<?php echo h($prof['avatar_path']); ?>" target="_blank" rel="noopener">ver</a></div>
       <?php endif; ?>
     </div>
     <div style="flex:2;min-width:240px">
       <label>Portada (opcional)</label>
       <input type="file" name="cover_file" accept="image/*">
       <?php if (!empty($prof['cover_path'])): ?>
-        <div class="small muted" style="margin-top:6px">Actual: <a href="../public/<?php echo h($prof['cover_path']); ?>" target="_blank" rel="noopener">ver</a></div>
+        <div class="small muted" style="margin-top:6px">Actual: <a href="../<?php echo h($prof['cover_path']); ?>" target="_blank" rel="noopener">ver</a></div>
       <?php endif; ?>
     </div>
     <div>

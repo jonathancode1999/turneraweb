@@ -1,12 +1,12 @@
 <?php
-require_once __DIR__ . '/../includes/availability.php';
-require_once __DIR__ . '/../includes/service_profesionales.php';
-require_once __DIR__ . '/../includes/utils.php';
-require_once __DIR__ . '/../includes/branches.php';
-require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/notifications.php';
-require_once __DIR__ . '/../includes/timeline.php';
-require_once __DIR__ . '/../includes/anti_spam.php';
+require_once __DIR__ . '/includes/availability.php';
+require_once __DIR__ . '/includes/service_profesionales.php';
+require_once __DIR__ . '/includes/utils.php';
+require_once __DIR__ . '/includes/branches.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/notifications.php';
+require_once __DIR__ . '/includes/timeline.php';
+require_once __DIR__ . '/includes/anti_spam.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];

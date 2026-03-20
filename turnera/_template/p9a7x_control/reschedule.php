@@ -234,7 +234,7 @@ admin_nav('appointments');
     }
 
     try{
-      const url = `../public/api.php?action=times&date=${encodeURIComponent(d)}&service_id=${encodeURIComponent(s)}&professional_id=${encodeURIComponent(b)}`;
+      const url = `../api.php?action=times&date=${encodeURIComponent(d)}&service_id=${encodeURIComponent(s)}&professional_id=${encodeURIComponent(b)}`;
       const res = await fetch(url, {cache:'no-store'});
       const json = await res.json();
       if(!json.ok) throw new Error(json.error || 'Error');

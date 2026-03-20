@@ -55,7 +55,7 @@ if(!is_dir($tpl)){
 }
 
 admin_recursive_copy($tpl, $target);
-
+admin_normalize_client_layout($target);
 
 // Create business in shared MySQL database
 $pdo = sa_pdo();

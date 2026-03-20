@@ -86,7 +86,7 @@ function admin_needs_setup(): bool {
 function admin_require_login(): void {
     session_start_safe();
     if (empty($_SESSION['admin_user'])) {
-        redirect('../admin/login.php');
+        redirect('../p9a7x_control/login.php');
     }
 
     // Refresh user from DB (permissions / active)
@@ -95,14 +95,14 @@ function admin_require_login(): void {
     $bid = (int)$cfg['business_id'];
     $uid = (int)($_SESSION['admin_user']['id'] ?? 0);
     if ($uid <= 0) {
-        redirect('../admin/login.php');
+        redirect('../p9a7x_control/login.php');
     }
     $st = $pdo->prepare('SELECT * FROM users WHERE business_id=:bid AND id=:id');
     $st->execute([':bid'=>$bid, ':id'=>$uid]);
     $u = $st->fetch();
     if (!$u || (isset($u['is_active']) && (int)$u['is_active']===0)) {
         admin_logout();
-        redirect('../admin/login.php');
+        redirect('../p9a7x_control/login.php');
     }
     // Cache essentials
     $_SESSION['admin_user'] = [

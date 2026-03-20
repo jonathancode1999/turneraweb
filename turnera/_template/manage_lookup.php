@@ -1,9 +1,9 @@
 <?php
-require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/utils.php';
-require_once __DIR__ . '/../includes/layout.php';
-require_once __DIR__ . '/../includes/status.php';
-require_once __DIR__ . '/../includes/anti_spam.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/utils.php';
+require_once __DIR__ . '/includes/layout.php';
+require_once __DIR__ . '/includes/status.php';
+require_once __DIR__ . '/includes/anti_spam.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
