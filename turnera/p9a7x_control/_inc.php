@@ -139,8 +139,6 @@ function admin_client_runtime_files(): array {
     'includes/whatsapp.php',
     'p9a7x_control/index.php',
     'p9a7x_control/login.php',
-    'p9a7x_control/setup.php',
-    'p9a7x_control/forgot_password.php',
     'p9a7x_control/dashboard.php',
     'p9a7x_control/profesionales.php',
     'p9a7x_control/profesional_edit.php',
@@ -161,9 +159,16 @@ function admin_client_force_refresh_files(): array {
     'includes/utils.php',
     'includes/whatsapp.php',
     'p9a7x_control/login.php',
-    'p9a7x_control/setup.php',
-    'p9a7x_control/forgot_password.php',
   ];
+}
+
+function admin_remove_client_legacy_auth_files(string $target): void {
+  foreach (['setup.php', 'forgot_password.php'] as $legacy) {
+    $path = $target . DIRECTORY_SEPARATOR . admin_client_control_dir() . DIRECTORY_SEPARATOR . $legacy;
+    if (is_file($path)) {
+      @unlink($path);
+    }
+  }
 }
 
 function admin_client_file_looks_legacy(string $path): bool {
@@ -183,6 +188,7 @@ function admin_client_file_looks_legacy(string $path): bool {
 }
 
 function admin_refresh_client_runtime_files(string $target): void {
+  admin_remove_client_legacy_auth_files($target);
   $template = admin_template_dir();
   $forceRefresh = array_flip(admin_client_force_refresh_files());
   foreach (admin_client_runtime_files() as $rel) {
