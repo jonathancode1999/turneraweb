@@ -47,26 +47,14 @@ if(file_exists($target)){
   header('Location: dashboard.php'); exit;
 }
 
-// Copy template
-$tpl = $root . DIRECTORY_SEPARATOR . '_template';
+// Copy template source from the app bundle into a sibling client directory.
+$tpl = admin_template_dir();
 if(!is_dir($tpl)){
-  flash_set('err','No existe _template.');
+  flash_set('err','No existe el template base.');
   header('Location: dashboard.php'); exit;
 }
 
-function rcopy($src, $dst){
-  mkdir($dst, 0777, true);
-  $dir = opendir($src);
-  while(false !== ($file = readdir($dir))){
-    if($file==='.'||$file==='..') continue;
-    $s = $src.DIRECTORY_SEPARATOR.$file;
-    $d = $dst.DIRECTORY_SEPARATOR.$file;
-    if(is_dir($s)) rcopy($s,$d);
-    else copy($s,$d);
-  }
-  closedir($dir);
-}
-rcopy($tpl, $target);
+admin_recursive_copy($tpl, $target);
 
 
 // Create business in shared MySQL database

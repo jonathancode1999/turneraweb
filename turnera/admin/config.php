@@ -18,7 +18,8 @@ return [
   'super_security_question' => '',
   'super_security_answer_hash' => '',
 
-  'root_dir' => realpath(__DIR__ . '/..'),
+  'root_dir' => realpath(__DIR__ . '/../..'),
+  'app_dir' => realpath(__DIR__ . '/..'),
 
   'db_host' => $dbHost,
   'db_port' => $dbPort,

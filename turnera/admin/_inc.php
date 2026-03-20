@@ -23,11 +23,57 @@ function cfg(): array {
 
 function admin_config(): array { return cfg(); }
 
+function admin_demo_slug(): string { return 'turnera_demo'; }
+
+function admin_app_dir(): string {
+  return cfg()['app_dir'] ?? realpath(__DIR__ . '/..');
+}
+
+function admin_template_dir(): string {
+  return admin_app_dir() . DIRECTORY_SEPARATOR . '_template';
+}
+
+function admin_recursive_copy(string $src, string $dst): void {
+  if (!is_dir($dst)) {
+    mkdir($dst, 0777, true);
+  }
+  $dir = opendir($src);
+  if ($dir === false) {
+    throw new RuntimeException('No se pudo abrir el template base.');
+  }
+  while (false !== ($file = readdir($dir))) {
+    if ($file === '.' || $file === '..') continue;
+    $s = $src . DIRECTORY_SEPARATOR . $file;
+    $d = $dst . DIRECTORY_SEPARATOR . $file;
+    if (is_dir($s)) {
+      admin_recursive_copy($s, $d);
+    } else {
+      copy($s, $d);
+    }
+  }
+  closedir($dir);
+}
+
+function ensure_demo_client_exists(): void {
+  $demoSlug = admin_demo_slug();
+  $target = client_dir($demoSlug);
+  if (is_dir($target) && file_exists($target . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'index.php')) {
+    return;
+  }
+
+  $templateDir = admin_template_dir();
+  if (!is_dir($templateDir)) {
+    return;
+  }
+
+  admin_recursive_copy($templateDir, $target);
+}
+
 function sa_schema_candidate_paths(): array {
-  $root = cfg()['root_dir'] ?? realpath(__DIR__ . '/..');
+  $appDir = admin_app_dir();
   return array_values(array_unique([
-    $root . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
-    $root . DIRECTORY_SEPARATOR . '_template' . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+    $appDir . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
+    $appDir . DIRECTORY_SEPARATOR . '_template' . DIRECTORY_SEPARATOR . 'schema_mysql.sql',
   ]));
 }
 
@@ -165,7 +211,8 @@ function save_admin_config(array $patch): void {
   foreach (['super_user','super_pass','super_pass_hash','super_email','super_security_question','super_security_answer_hash'] as $key) {
     $content .= '  '.var_export($key, true).' => '.var_export($config[$key] ?? '', true).",\n";
   }
-  $content .= "\n  'root_dir' => realpath(__DIR__ . '/..'),\n\n";
+  $content .= "\n  'root_dir' => realpath(__DIR__ . '/../..'),\n";
+  $content .= "  'app_dir' => realpath(__DIR__ . '/..'),\n\n";
   $content .= "  'db_host' => $" . "dbHost,\n";
   $content .= "  'db_port' => $" . "dbPort,\n";
   $content .= "  'db_name' => $" . "dbName,\n";
@@ -361,10 +408,12 @@ function client_pdo(string $slug): PDO {
 }
 
 function list_clients(): array {
+  ensure_demo_client_exists();
   $root = cfg()['root_dir'];
-  $items = array_values(array_filter(scandir($root), function($x) use ($root){
+  $appBase = basename(admin_app_dir());
+  $items = array_values(array_filter(scandir($root), function($x) use ($root, $appBase){
     if($x==='.'||$x==='..') return false;
-    if($x==='admin') return false;
+    if($x===$appBase) return false;
     $p=$root.DIRECTORY_SEPARATOR.$x;
     return is_dir($p) && file_exists($p.DIRECTORY_SEPARATOR.'public'.DIRECTORY_SEPARATOR.'index.php');
   }));

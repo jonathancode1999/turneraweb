@@ -26,7 +26,7 @@ $securityQuestions = admin_security_questions();
             $coverPathStmt->execute([$bid]);
             $coverPath=$coverPathStmt->fetchColumn() ?: '';
           } catch(Throwable $e){ $name='(error DB)'; $logoPath=''; $coverPath=''; }
-          if ($slug === '_template' && ($name === '_template' || $name === '(error DB)')) { $name = 'Demo Turnos'; }
+          if ($slug === admin_demo_slug() && ($name === admin_demo_slug() || $name === '(error DB)')) { $name = 'Demo Turnos'; }
           $disabled = client_disabled($slug);
         ?>
           <tr>
