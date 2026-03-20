@@ -129,14 +129,40 @@ function admin_client_runtime_files(): array {
     'success.php',
     'mp_return.php',
     'mp_webhook.php',
+    'includes/auth.php',
+    'includes/config.php',
+    'includes/layout.php',
+    'includes/mercadopago.php',
+    'includes/notifications.php',
+    'includes/uploads.php',
+    'includes/utils.php',
+    'includes/whatsapp.php',
     'p9a7x_control/index.php',
     'p9a7x_control/login.php',
+    'p9a7x_control/setup.php',
+    'p9a7x_control/forgot_password.php',
     'p9a7x_control/dashboard.php',
     'p9a7x_control/profesionales.php',
     'p9a7x_control/profesional_edit.php',
     'p9a7x_control/settings.php',
     'p9a7x_control/reschedule.php',
     'p9a7x_control/wa_action.php',
+  ];
+}
+
+function admin_client_force_refresh_files(): array {
+  return [
+    'includes/auth.php',
+    'includes/config.php',
+    'includes/layout.php',
+    'includes/mercadopago.php',
+    'includes/notifications.php',
+    'includes/uploads.php',
+    'includes/utils.php',
+    'includes/whatsapp.php',
+    'p9a7x_control/login.php',
+    'p9a7x_control/setup.php',
+    'p9a7x_control/forgot_password.php',
   ];
 }
 
@@ -158,10 +184,12 @@ function admin_client_file_looks_legacy(string $path): bool {
 
 function admin_refresh_client_runtime_files(string $target): void {
   $template = admin_template_dir();
+  $forceRefresh = array_flip(admin_client_force_refresh_files());
   foreach (admin_client_runtime_files() as $rel) {
     $src = $template . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
     $dst = $target . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
-    if (!is_file($src) || !admin_client_file_looks_legacy($dst)) {
+    $needsRefresh = isset($forceRefresh[$rel]) || admin_client_file_looks_legacy($dst);
+    if (!is_file($src) || !$needsRefresh) {
       continue;
     }
     if (!is_dir(dirname($dst))) {
