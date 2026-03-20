@@ -33,6 +33,29 @@ function admin_template_dir(): string {
   return admin_app_dir() . DIRECTORY_SEPARATOR . '_template';
 }
 
+function admin_app_slug(): string {
+  return basename(admin_app_dir());
+}
+
+function admin_install_base_path(): string {
+  $script = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
+  $appSegment = '/' . trim(admin_app_slug(), '/') . '/';
+  $pos = strpos($script, $appSegment);
+  if ($pos === false) {
+    return '';
+  }
+  $base = rtrim(substr($script, 0, $pos), '/');
+  return $base === '/' ? '' : $base;
+}
+
+function client_web_path(string $slug, string $suffix = ''): string {
+  $path = admin_install_base_path() . '/' . trim($slug, '/');
+  if ($suffix !== '') {
+    $path .= '/' . ltrim($suffix, '/');
+  }
+  return $path;
+}
+
 function admin_client_control_dir(): string {
   return 'p9a7x_control';
 }
@@ -94,6 +117,60 @@ function admin_recursive_move_contents(string $src, string $dst): void {
   @rmdir($src);
 }
 
+function admin_client_runtime_files(): array {
+  return [
+    'index.php',
+    'api.php',
+    'create_booking.php',
+    'manage.php',
+    'manage_lookup.php',
+    'ics.php',
+    'pay.php',
+    'success.php',
+    'mp_return.php',
+    'mp_webhook.php',
+    'p9a7x_control/index.php',
+    'p9a7x_control/login.php',
+    'p9a7x_control/dashboard.php',
+    'p9a7x_control/profesionales.php',
+    'p9a7x_control/profesional_edit.php',
+    'p9a7x_control/settings.php',
+    'p9a7x_control/reschedule.php',
+    'p9a7x_control/wa_action.php',
+  ];
+}
+
+function admin_client_file_looks_legacy(string $path): bool {
+  if (!is_file($path)) {
+    return false;
+  }
+  $content = file_get_contents($path);
+  if ($content === false) {
+    return false;
+  }
+  foreach (["__DIR__ . '/../includes/'", "../includes/", "/public/", "/admin/"] as $needle) {
+    if (strpos($content, $needle) !== false) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function admin_refresh_client_runtime_files(string $target): void {
+  $template = admin_template_dir();
+  foreach (admin_client_runtime_files() as $rel) {
+    $src = $template . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    $dst = $target . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    if (!is_file($src) || !admin_client_file_looks_legacy($dst)) {
+      continue;
+    }
+    if (!is_dir(dirname($dst))) {
+      mkdir(dirname($dst), 0777, true);
+    }
+    copy($src, $dst);
+  }
+}
+
 function admin_normalize_client_layout(string $target): void {
   if (!is_dir($target)) {
     return;
@@ -129,6 +206,7 @@ function ensure_demo_client_exists(): void {
   $target = client_dir($demoSlug);
   if (is_dir($target)) {
     admin_normalize_client_layout($target);
+    admin_refresh_client_runtime_files($target);
     if (admin_client_ready($target)) {
       return;
     }
@@ -141,6 +219,7 @@ function ensure_demo_client_exists(): void {
 
   admin_recursive_copy($templateDir, $target);
   admin_normalize_client_layout($target);
+  admin_refresh_client_runtime_files($target);
 }
 
 function sa_schema_candidate_paths(): array {
@@ -497,6 +576,7 @@ function list_clients(): array {
     if (!is_dir($p)) continue;
     if (!is_file($p . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'config.php')) continue;
     admin_normalize_client_layout($p);
+    admin_refresh_client_runtime_files($p);
     if (admin_client_ready($p)) {
       $items[] = $x;
     }

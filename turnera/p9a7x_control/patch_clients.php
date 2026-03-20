@@ -5,22 +5,7 @@ admin_require_login();
 $root = realpath(__DIR__ . '/..');
 $template = $root . DIRECTORY_SEPARATOR . '_template';
 
-$filesToCopy = [
-  'includes/branches.php',
-  'includes/db.php',
-  'includes/service_profesionales.php',
-  'includes/timeline.php',
-  'index.php',
-  'create_booking.php',
-  'manage.php',
-  'api.php',
-  'p9a7x_control/dashboard.php',
-  'p9a7x_control/profesionales.php',
-  'p9a7x_control/barber_edit.php',
-  'p9a7x_control/blocks.php',
-  'p9a7x_control/analytics.php',
-  'p9a7x_control/wa_action.php',
-];
+$filesToCopy = admin_client_runtime_files();
 
 function is_client_dir(string $dir): bool {
   admin_normalize_client_layout($dir);

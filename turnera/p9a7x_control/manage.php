@@ -750,8 +750,8 @@ $rows = $st->fetchAll(PDO::FETCH_ASSOC);
       </div>
       <div class="small">Links rápidos:</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <a class="btn" target="_blank" href="../<?=h($slug)?>/">Abrir sitio</a>
-        <a class="btn" target="_blank" href="../<?=h($slug)?>/p9a7x_control/">Abrir admin</a>
+        <a class="btn" target="_blank" href="<?=h(client_web_path($slug))?>/">Abrir sitio</a>
+        <a class="btn" target="_blank" href="<?=h(client_web_path($slug, admin_client_control_dir()))?>/">Abrir admin</a>
       </div>
     </div>
   </div>
