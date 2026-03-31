@@ -93,7 +93,33 @@ function db(): PDO {
 
     db_bootstrap_schema_if_needed($pdo);
     migrate_if_needed($pdo);
+    ensure_payment_attempts_schema($pdo);
     return $pdo;
+}
+
+function ensure_payment_attempts_schema(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS payment_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        business_id INT NOT NULL,
+        branch_id INT NOT NULL,
+        professional_id INT NOT NULL,
+        service_id INT NOT NULL,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(64) NOT NULL,
+        customer_email VARCHAR(255) DEFAULT '',
+        notes TEXT,
+        start_at DATETIME NOT NULL,
+        end_at DATETIME NOT NULL,
+        payment_mode VARCHAR(16) NOT NULL DEFAULT 'deposit',
+        payment_amount_ars INT NOT NULL DEFAULT 0,
+        token VARCHAR(64) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        mp_preference_id VARCHAR(255) DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        paid_at DATETIME NULL,
+        UNIQUE KEY uq_payment_attempt_token (business_id, token),
+        INDEX idx_payment_attempt_status (business_id, status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 }
 
 function app_now_local_sql(): string {
