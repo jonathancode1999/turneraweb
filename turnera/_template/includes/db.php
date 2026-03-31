@@ -107,6 +107,25 @@ function app_now_local_sql(): string {
     return (new DateTimeImmutable('now', $tz))->format('Y-m-d H:i:s');
 }
 
+function app_parse_local_sql_datetime(string $raw): ?DateTimeImmutable {
+    $raw = trim($raw);
+    if ($raw === '') return null;
+    $cfg = app_config();
+    $tzName = (string)($cfg['timezone'] ?? 'UTC');
+    try {
+        $tz = new DateTimeZone($tzName);
+    } catch (Throwable $e) {
+        $tz = new DateTimeZone('UTC');
+    }
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $raw, $tz);
+    if ($dt instanceof DateTimeImmutable) return $dt;
+    try {
+        return new DateTimeImmutable($raw, $tz);
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function db_table_exists(PDO $pdo, string $name): bool {
     $st = $pdo->prepare(
         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
@@ -748,15 +767,33 @@ function ensure_payment_schema(PDO $pdo): void {
 }
 
 function expire_pending_payments(PDO $pdo): void {
-    // Expire pending payments after deadline.
-    // Only affects slots that were created as payment-required reservations.
-    $pdo->prepare("UPDATE appointments
-                   SET status='VENCIDO', payment_status='expired', updated_at=CURRENT_TIMESTAMP
-                   WHERE status='PENDIENTE_PAGO'
-                     AND payment_status='pending'
-                     AND payment_expires_at IS NOT NULL
-                     AND payment_expires_at <= :now_local")
-        ->execute([':now_local' => app_now_local_sql()]);
+    // Expire pending payments after deadline using app timezone.
+    // We do the datetime comparison in PHP to avoid MySQL/session timezone drift.
+    $rows = $pdo->query("SELECT id, payment_expires_at
+                         FROM appointments
+                         WHERE status='PENDIENTE_PAGO' AND payment_status='pending'")
+        ->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if (!$rows) return;
+
+    $nowLocal = app_parse_local_sql_datetime(app_now_local_sql());
+    if (!$nowLocal) return;
+
+    $expireIds = [];
+    foreach ($rows as $r) {
+        $exp = app_parse_local_sql_datetime((string)($r['payment_expires_at'] ?? ''));
+        if (!$exp) continue; // defensive: keep pending if expiration field is malformed/empty
+        if ($exp <= $nowLocal) {
+            $expireIds[] = (int)($r['id'] ?? 0);
+        }
+    }
+    $expireIds = array_values(array_filter($expireIds, fn($id) => $id > 0));
+    if (!$expireIds) return;
+
+    $ph = implode(',', array_fill(0, count($expireIds), '?'));
+    $st = $pdo->prepare("UPDATE appointments
+                         SET status='VENCIDO', payment_status='expired', updated_at=CURRENT_TIMESTAMP
+                         WHERE id IN ($ph)");
+    $st->execute($expireIds);
 }
 
 function expire_pending_bookings(PDO $pdo): void {
