@@ -29,6 +29,9 @@ $installments = (int)($in['installments'] ?? 1);
 $payerEmail = trim((string)($in['payer_email'] ?? ''));
 $docType = trim((string)($in['doc_type'] ?? 'DNI'));
 $docNumber = trim((string)($in['doc_number'] ?? ''));
+$securityCode = trim((string)($in['security_code'] ?? ''));
+$securityCodeId = trim((string)($in['security_code_id'] ?? ''));
+$cardId = trim((string)($in['card_id'] ?? ''));
 
 if ($attemptToken === '' || $cardToken === '' || $paymentMethodId === '' || $payerEmail === '') {
     http_response_code(400);
@@ -68,6 +71,9 @@ try {
         ],
     ];
     if ($issuerId !== '') $payload['issuer_id'] = $issuerId;
+    if ($securityCode !== '') $payload['security_code'] = $securityCode;
+    if ($securityCodeId !== '') $payload['security_code_id'] = $securityCodeId;
+    if ($cardId !== '') $payload['card_id'] = $cardId;
 
     $idemKey = 'attempt_' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $attemptToken) . '_' . bin2hex(random_bytes(8));
     $ch = curl_init('https://api.mercadopago.com/v1/payments');

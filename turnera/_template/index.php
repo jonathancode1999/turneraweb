@@ -413,9 +413,10 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <div id="paymentInline" style="display:block;margin-top:12px">
           <div class="notice">
             <b>Pago con tarjeta</b>
-            <div id="payAmountText" class="muted small" style="margin-top:6px"></div>
+            <div id="payAmountText" style="margin-top:6px;font-size:24px;font-weight:800;color:#111"></div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
               <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
+              <div id="paySpinner" class="muted small" style="display:none;margin-bottom:8px">⏳ Cargando pago seguro...</div>
               <div id="cardPaymentBrick_container"></div>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
@@ -483,6 +484,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const payAmountText = document.getElementById('payAmountText');
   const cardFormWrap = document.getElementById('cardFormWrap');
   const cardFormStatus = document.getElementById('cardFormStatus');
+  const paySpinner = document.getElementById('paySpinner');
   const payInlineMsg = document.getElementById('payInlineMsg');
   let pendingAttemptToken = '';
   let currentPublicKey = '';
@@ -776,6 +778,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     if (pendingAttemptToken) return;
     if ((barberInput.value === '') || !serviceInput.value || !dateInput.value || !timeInput.value) return;
     if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+    setSpinner(true, '⏳ Preparando intento de pago...');
     try {
       const fd = new FormData(form);
       fd.set('ajax', '1');
@@ -796,6 +799,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       mountCardForm();
     } catch (err) {
       if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
+      setSpinner(false);
     }
   }
 
@@ -814,6 +818,12 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     return await res.json();
   }
 
+  function setSpinner(on, text){
+    if (!paySpinner) return;
+    paySpinner.style.display = on ? '' : 'none';
+    if (text) paySpinner.textContent = text;
+  }
+
   function mountCardForm(){
     if (!window.MercadoPago) {
       if (payInlineMsg) payInlineMsg.textContent = 'No cargó el SDK de Mercado Pago.';
@@ -827,6 +837,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     const payerEmailInput = document.querySelector('input[name="customer_email"]');
     const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value : '';
     if (cardFormStatus) cardFormStatus.textContent = 'Completá tu tarjeta para pagar.';
+    setSpinner(true, '⏳ Cargando formulario seguro...');
 
     const mp = new MercadoPago(currentPublicKey, {locale: 'es-AR'});
     const bricksBuilder = mp.bricks();
@@ -849,31 +860,38 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
           callbacks: {
             onReady: () => {
               if (cardFormStatus) cardFormStatus.textContent = 'Formulario seguro cargado.';
+              setSpinner(false);
             },
             onSubmit: (cardData) => {
               if (cardFormStatus) cardFormStatus.textContent = 'Procesando pago...';
+              setSpinner(true, '⏳ Procesando pago...');
               const payer = cardData && cardData.payer ? cardData.payer : {};
               const identification = payer && payer.identification ? payer.identification : {};
               return sendCardPayment({
                 attempt_token: pendingAttemptToken,
-                card_token: cardData.token,
-                payment_method_id: cardData.payment_method_id,
-                issuer_id: cardData.issuer_id,
-                installments: cardData.installments,
+                card_token: cardData.token || cardData.card_token || '',
+                payment_method_id: cardData.payment_method_id || cardData.paymentMethodId || '',
+                issuer_id: cardData.issuer_id || cardData.issuerId || '',
+                installments: cardData.installments || 1,
                 payer_email: payer.email || '',
                 doc_type: identification.type || '',
                 doc_number: identification.number || '',
+                security_code: cardData.security_code || cardData.securityCode || '',
+                security_code_id: cardData.security_code_id || cardData.securityCodeId || '',
+                card_id: cardData.card_id || cardData.cardId || '',
               }).then((out) => {
                 if (out.ok && out.status === 'approved' && out.manage_url) {
                   window.location.href = out.manage_url;
                   return out;
                 }
                 if (cardFormStatus) cardFormStatus.textContent = out.error || 'No se pudo aprobar el pago.';
+                setSpinner(false);
                 return out;
               });
             },
             onError: (error) => {
               if (cardFormStatus) cardFormStatus.textContent = (error && error.message) ? error.message : 'Error con el formulario de tarjeta.';
+              setSpinner(false);
             },
           },
         });
