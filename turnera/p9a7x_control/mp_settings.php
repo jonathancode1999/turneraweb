@@ -13,12 +13,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   csrf_check();
   $cid = trim((string)($_POST['mp_client_id'] ?? ''));
   $csec = trim((string)($_POST['mp_client_secret'] ?? ''));
+  $pkey = trim((string)($_POST['mp_public_key'] ?? ''));
   $ruri = trim((string)($_POST['mp_redirect_uri'] ?? ''));
 
   try {
     $st = $pdo->prepare("REPLACE INTO meta(`key`,`value`) VALUES(:k,:v)");
     $st->execute([':k'=>'mp_client_id', ':v'=>$cid]);
     $st->execute([':k'=>'mp_client_secret', ':v'=>$csec]);
+    $st->execute([':k'=>'mp_public_key', ':v'=>$pkey]);
     $st->execute([':k'=>'mp_redirect_uri', ':v'=>$ruri]); // opcional (si queda vacío, se auto-deduce por cliente)
     $notice = 'Guardado.';
   } catch (Throwable $e) {
@@ -35,6 +37,7 @@ function meta_get_sa(PDO $pdo, string $k): string {
 
 $cid = meta_get_sa($pdo, 'mp_client_id');
 $csec = meta_get_sa($pdo, 'mp_client_secret');
+$pkey = meta_get_sa($pdo, 'mp_public_key');
 $ruri = meta_get_sa($pdo, 'mp_redirect_uri');
 
 header_html('MercadoPago (técnico)');
@@ -62,6 +65,9 @@ header_html('MercadoPago (técnico)');
 
     <label style="margin-top:10px;">MP_CLIENT_SECRET</label>
     <input type="text" name="mp_client_secret" value="<?php echo h($csec); ?>" placeholder="APP_USR-...">
+
+    <label style="margin-top:10px;">MP_PUBLIC_KEY</label>
+    <input type="text" name="mp_public_key" value="<?php echo h($pkey); ?>" placeholder="APP_USR-xxxxxxxx">
 
     <label style="margin-top:10px;">MP_REDIRECT_URI (opcional)</label>
     <input type="text" name="mp_redirect_uri" value="<?php echo h($ruri); ?>" placeholder="https://tudominio.com/cliente/p9a7x_control/mp_callback.php">
