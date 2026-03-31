@@ -16,9 +16,6 @@ if ($token === '') {
     exit;
 }
 
-// Expire any pending payments opportunistically
-expire_pending_payments($pdo);
-
 $stmt = $pdo->prepare("SELECT a.*, s.name AS service_name, s.price_ars, s.deposit_percent_override, br.name AS barber_name
                        FROM appointments a
                        JOIN services s ON s.id=a.service_id
@@ -31,6 +28,24 @@ if (!$a) {
     http_response_code(404);
     echo "Turno no encontrado.";
     exit;
+}
+
+// Expire only this appointment if its payment window elapsed.
+// Avoid global expiry updates here (timezone/session drift in DB environments).
+$expiresAtRaw = trim((string)($a['payment_expires_at'] ?? ''));
+if ((string)$a['status'] === 'PENDIENTE_PAGO' && (string)$a['payment_status'] === 'pending' && $expiresAtRaw !== '') {
+    try {
+        $expDt = parse_db_datetime($expiresAtRaw);
+        if ($expDt <= now_tz()) {
+            $pdo->prepare("UPDATE appointments
+                           SET status='VENCIDO', payment_status='expired', updated_at=CURRENT_TIMESTAMP
+                           WHERE business_id=:bid AND id=:id")
+                ->execute([':bid'=>$bid, ':id'=>(int)$a['id']]);
+            redirect('manage.php?token=' . urlencode($token));
+        }
+    } catch (Throwable $e) {
+        // if parsing fails, keep flow and let user continue/retry
+    }
 }
 
 if ((string)$a['status'] !== 'PENDIENTE_PAGO' || (string)$a['payment_status'] !== 'pending') {
