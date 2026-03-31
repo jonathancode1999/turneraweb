@@ -390,7 +390,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         </ul>
       </div>
 
-      
+      <?php if (!$publicRequiresPayment): ?>
       <input type="text" name="website" value="" autocomplete="off" tabindex="-1" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;opacity:0" aria-hidden="true">
 
       <div class="row">
@@ -401,23 +401,24 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <?php if ($bookingError !== ''): ?><div class="notice danger" style="margin-top:8px"><?php echo h($bookingError); ?></div><?php endif; ?>
         </div>
       </div>
+      <?php endif; ?>
 
       <div class="step-actions">
         <button type="button" class="btn" data-back="5">Atrás</button>
-        <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
+        <?php if (!$publicRequiresPayment): ?>
+          <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
+        <?php endif; ?>
       </div>
       <?php if ($publicRequiresPayment): ?>
         <div id="paymentInline" style="display:block;margin-top:12px">
           <div class="notice">
             <b>Pago con tarjeta</b>
-            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn primary" id="payCardInitBtn" disabled>Cargar pago seguro de Mercado Pago</button>
-            </div>
+            <div id="payAmountText" class="muted small" style="margin-top:6px"></div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
               <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
               <div id="cardPaymentBrick_container"></div>
             </div>
-            <div id="payInlineMsg" class="muted small" style="margin-top:10px">Completá los datos y tocá <b>Solicitar turno</b> para generar las opciones de pago.</div>
+            <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
           </div>
         </div>
       <?php else: ?>
@@ -479,7 +480,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const confirmSummary = document.getElementById('confirmSummary');
   const form = document.getElementById('bookingForm');
   const paymentInline = document.getElementById('paymentInline');
-  const payCardInitBtn = document.getElementById('payCardInitBtn');
+  const payAmountText = document.getElementById('payAmountText');
   const cardFormWrap = document.getElementById('cardFormWrap');
   const cardFormStatus = document.getElementById('cardFormStatus');
   const payInlineMsg = document.getElementById('payInlineMsg');
@@ -513,6 +514,9 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
           <div style="margin-top:6px"><a class="link" target="_blank" rel="noopener" href="https://wa.me/<?php echo h($waDigits2); ?>">WhatsApp del local</a></div>
         <?php endif; ?>
       `;
+      if (REQUIRES_PAYMENT && !pendingAttemptToken) {
+        initPaymentAttempt();
+      }
     }
   }
 
@@ -762,36 +766,42 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
 
   function validateForm(){
     // professional_id can be "0" (primer profesional disponible)
-    submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
+    if (submit) {
+      submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
+    }
+  }
+
+  async function initPaymentAttempt(){
+    if (!form) return;
+    if (pendingAttemptToken) return;
+    if ((barberInput.value === '') || !serviceInput.value || !dateInput.value || !timeInput.value) return;
+    if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+    try {
+      const fd = new FormData(form);
+      fd.set('ajax', '1');
+      const res = await fetch('create_booking.php', {
+        method: 'POST',
+        body: fd,
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      pendingAttemptToken = String(data.token || '');
+      currentPublicKey = String(data.public_key || '');
+      currentAmount = Number(data.amount || 0);
+      if (payAmountText) {
+        payAmountText.textContent = 'Resumen: pagás $' + (Math.round(currentAmount) || 0).toLocaleString('es-AR');
+      }
+      if (payInlineMsg) payInlineMsg.textContent = 'Formulario listo.';
+      mountCardForm();
+    } catch (err) {
+      if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
+    }
   }
 
   if (form && REQUIRES_PAYMENT) {
-    form.addEventListener('submit', async (e)=>{
+    form.addEventListener('submit', (e)=>{
       e.preventDefault();
-      if (submit.disabled) return;
-      submit.disabled = true;
-      if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
-      try {
-        const fd = new FormData(form);
-        fd.set('ajax', '1');
-        const res = await fetch('create_booking.php', {
-          method: 'POST',
-          body: fd,
-          headers: { 'Accept': 'application/json' }
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
-        if (paymentInline) paymentInline.style.display = '';
-        pendingAttemptToken = String(data.token || '');
-        currentPublicKey = String(data.public_key || '');
-        currentAmount = Number(data.amount || 0);
-        if (payCardInitBtn) payCardInitBtn.disabled = !(pendingAttemptToken && currentPublicKey && currentAmount > 0);
-        if (payInlineMsg) payInlineMsg.textContent = 'Listo. Tocá "Cargar formulario de tarjeta".';
-      } catch (err) {
-        if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
-      } finally {
-        submit.disabled = false;
-      }
     });
   }
 
@@ -810,7 +820,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       return;
     }
     if (!currentPublicKey || !pendingAttemptToken || currentAmount <= 0) {
-      if (payInlineMsg) payInlineMsg.textContent = 'Primero generá un intento de pago con "Solicitar turno".';
+      if (payInlineMsg) payInlineMsg.textContent = 'No se pudo preparar el intento de pago.';
       return;
     }
     if (cardFormWrap) cardFormWrap.style.display = '';
@@ -868,10 +878,6 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
           },
         });
       });
-  }
-
-  if (payCardInitBtn) {
-    payCardInitBtn.addEventListener('click', mountCardForm);
   }
 
   // Gallery carousel (infinite + autoplay)

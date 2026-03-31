@@ -11,6 +11,8 @@ require_once __DIR__ . '/includes/anti_spam.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
+$bizFlow = get_business($bid);
+$requiresPaymentFlow = in_array(strtoupper(trim((string)($bizFlow['payment_mode'] ?? 'OFF'))), ['DEPOSIT','FULL'], true);
 $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
 $isAjax = (isset($_POST['ajax']) && (string)$_POST['ajax'] === '1')
     || strpos($accept, 'application/json') !== false;
@@ -30,7 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     spam_throttle_ip('booking', 30, 300);
     spam_honeypot_check('website');
-    spam_captcha_require_post('captcha_answer');
+    if (!$requiresPaymentFlow) {
+        spam_captcha_require_post('captcha_answer');
+    }
 } catch (Throwable $e) {
     if ($isAjax) {
         booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);

@@ -69,7 +69,31 @@ try {
     ];
     if ($issuerId !== '') $payload['issuer_id'] = $issuerId;
 
-    $payment = mp_api_request('POST', 'https://api.mercadopago.com/v1/payments', (string)$tok['access_token'], $payload);
+    $idemKey = 'attempt_' . preg_replace('/[^a-zA-Z0-9_\-]/', '', $attemptToken) . '_' . bin2hex(random_bytes(8));
+    $ch = curl_init('https://api.mercadopago.com/v1/payments');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 25);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . (string)$tok['access_token'],
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'X-Idempotency-Key: ' . $idemKey,
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
+    $resp = curl_exec($ch);
+    $err = curl_error($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($resp === false) {
+        throw new RuntimeException('MercadoPago error: ' . $err);
+    }
+    $payment = json_decode((string)$resp, true);
+    if (!is_array($payment)) $payment = [];
+    if ($code < 200 || $code >= 300) {
+        $msg = (string)($payment['message'] ?? $payment['error'] ?? ('HTTP ' . $code));
+        throw new RuntimeException('MercadoPago HTTP ' . $code . ': ' . $msg);
+    }
     $status = (string)($payment['status'] ?? '');
     $paymentId = (string)($payment['id'] ?? '');
 
@@ -144,4 +168,3 @@ try {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
 }
-
