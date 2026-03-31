@@ -276,7 +276,11 @@ $requestedStart = (!empty($a['requested_start_at'])) ? parse_db_datetime((string
 $status = (string)$a['status'];
 $statusLabel = status_label($status);
 $badge = status_badge_class($status);
+$paymentMode = strtolower(trim((string)($a['payment_mode'] ?? 'none')));
 $paymentAmountArs = (int)($a['payment_amount_ars'] ?? 0);
+$paymentCta = 'Pagar con MercadoPago';
+if ($paymentMode === 'deposit') $paymentCta = 'Pagar seña';
+if ($paymentMode === 'full') $paymentCta = 'Pagar total';
 
 // Lists for reschedule UI
 $services = $pdo->query("SELECT id, name, description, duration_minutes, price_ars, is_active, image_url FROM services WHERE business_id=" . (int)$bid . " AND is_active=1 ORDER BY id")->fetchAll() ?: [];
@@ -344,11 +348,15 @@ page_head('Gestionar turno', 'public-light');
 
     <?php if ($status === 'PENDIENTE_PAGO'): ?>
       <div class="notice warn" style="margin-top:10px">
-        <b>Pendiente de pago:</b> este estado quedó de una versión anterior.
+        <b>Pendiente de pago:</b>
+        <?php echo h($paymentMode === 'deposit' ? 'para confirmar tu turno tenés que pagar la seña.' : 'para confirmar tu turno tenés que pagar el total.'); ?>
         <?php if ($paymentAmountArs > 0): ?>
-          <div style="margin-top:6px"><b>Importe registrado:</b> <?php echo h(fmt_money_ars($paymentAmountArs)); ?></div>
+          <div style="margin-top:6px"><b>Importe a pagar:</b> <?php echo h(fmt_money_ars($paymentAmountArs)); ?></div>
         <?php endif; ?>
-        <div class="muted small" style="margin-top:6px">El pago online está deshabilitado. Contactate con el local por WhatsApp para continuar.</div>
+        <div class="muted small" style="margin-top:6px">Reservamos tu turno por 15 minutos. Si no pagás, se vence automáticamente.</div>
+      </div>
+      <div style="margin-top:12px">
+        <a class="btn primary" href="pay.php?token=<?php echo urlencode($token); ?>" target="_blank" rel="noopener"><?php echo h($paymentCta); ?></a>
       </div>
     <?php endif; ?>
 

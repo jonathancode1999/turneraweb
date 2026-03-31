@@ -31,7 +31,10 @@ if (!$branch) {
 
 $business = $pdo->query('SELECT * FROM businesses WHERE id=' . $bid)->fetch();
 $branches = branches_all_active();
+$publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
+$publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
 $publicSubmitText = 'Solicitar turno';
+if ($publicRequiresPayment) $publicSubmitText = 'Continuar al pago';
 
 // Map embed helper
 $mapEmbed = '';
@@ -373,7 +376,12 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <div class="notice" style="margin:0 0 12px 0">
         <b>Reglas</b>
         <ul class="muted" style="margin:8px 0 0 18px">
-          <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php if ($publicRequiresPayment): ?>
+            <li>En el siguiente paso vas a elegir cómo pagar (tarjeta o QR de MercadoPago).</li>
+            <li>El turno se confirma cuando el pago queda aprobado.</li>
+          <?php else: ?>
+            <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php endif; ?>
           <?php if ((int)($business['cancel_notice_minutes'] ?? 0) > 0): ?>
             <li>Cancelación con al menos <b><?php echo (int)($business['cancel_notice_minutes'] ?? 0); ?> min</b> de anticipación.</li>
           <?php else: ?>
@@ -399,7 +407,11 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <button type="button" class="btn" data-back="5">Atrás</button>
         <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
       </div>
-      <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php if ($publicRequiresPayment): ?>
+        <p class="muted small">Ahora pasás al pago online. Cuando MercadoPago confirme, el turno queda confirmado.</p>
+      <?php else: ?>
+        <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php endif; ?>
       </div>
     </form>
   </div>
