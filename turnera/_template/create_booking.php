@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/service_profesionales.php';
 require_once __DIR__ . '/includes/utils.php';
 require_once __DIR__ . '/includes/branches.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/mercadopago.php';
 require_once __DIR__ . '/includes/notifications.php';
 require_once __DIR__ . '/includes/timeline.php';
 require_once __DIR__ . '/includes/anti_spam.php';
@@ -142,6 +143,8 @@ try {
             throw new RuntimeException('No se pudo iniciar la transacción');
         }
     }
+    $redirectUrl = 'manage.php?token=' . urlencode($token);
+    $needsPayment = false;
     try {
         $business = get_business($bid);
         $paymentModeBiz = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
@@ -188,6 +191,24 @@ try {
                 ':t' => $token,
                 ':st' => 'pending',
             ]);
+
+            $attemptId = (int)$pdo->lastInsertId();
+            $branchForMp = is_array($branch) ? $branch : [];
+            $pref = mp_create_preference($pdo, $bid, [
+                'id' => $attemptId,
+                'token' => $token,
+                'payment_amount_ars' => $paymentAmount,
+            ], $service, $branchForMp);
+            $prefId = (string)($pref['id'] ?? '');
+            $initPoint = (string)($pref['init_point'] ?? '');
+            if ($prefId !== '') {
+                $pdo->prepare("UPDATE payment_attempts SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
+                    ->execute([':pid' => $prefId, ':bid' => $bid, ':id' => $attemptId]);
+            }
+            if ($initPoint === '') {
+                throw new RuntimeException('No se pudo iniciar el pago en MercadoPago.');
+            }
+            $redirectUrl = $initPoint;
         } else {
             $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
                                    VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
@@ -229,31 +250,28 @@ try {
         throw $e;
     }
 
-    // Email notifications (optional, if SMTP is configured)
-    try {
-        $business = get_business($bid);
-        $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
-            FROM appointments a
-            JOIN services s ON s.id=a.service_id
-            JOIN profesionales br ON br.id=a.professional_id
-            WHERE a.business_id=:bid AND a.token=:t');
-        $stmtN->execute(array(':bid' => $bid, ':t' => $token));
-        $full = $stmtN->fetch();
-        if ($full) {
-            $br = branch_get($branchId);
-            $extra = [];
-            if ($br) $extra['branch_name'] = (string)($br['name'] ?? '');
-            notify_event('booking_pending', $business, $full, $extra);
+    if (!$needsPayment) {
+        // Email notifications (optional, if SMTP is configured)
+        try {
+            $business = get_business($bid);
+            $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
+                FROM appointments a
+                JOIN services s ON s.id=a.service_id
+                JOIN profesionales br ON br.id=a.professional_id
+                WHERE a.business_id=:bid AND a.token=:t');
+            $stmtN->execute(array(':bid' => $bid, ':t' => $token));
+            $full = $stmtN->fetch();
+            if ($full) {
+                $br = branch_get($branchId);
+                $extra = [];
+                if ($br) $extra['branch_name'] = (string)($br['name'] ?? '');
+                notify_event('booking_pending', $business, $full, $extra);
+            }
+        } catch (Throwable $e) {
+            // Non-fatal
         }
-    } catch (Throwable $e) {
-        // Non-fatal
     }
-
-    if ($needsPayment) {
-        redirect('pay.php?token=' . urlencode($token));
-    } else {
-        redirect('manage.php?token=' . urlencode($token));
-    }
+    redirect($redirectUrl);
 
 } catch (Throwable $e) {
     http_response_code(400);
