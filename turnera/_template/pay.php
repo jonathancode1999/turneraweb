@@ -8,7 +8,6 @@ require_once __DIR__ . '/includes/mercadopago.php';
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
 $pdo = db();
-$mpCfg = mp_cfg();
 
 $token = trim((string)($_GET['token'] ?? ''));
 if ($token === '') {
@@ -77,10 +76,6 @@ try {
         $pref = mp_create_preference($pdo, $bid, $a, $service, $branch);
         $prefId = (string)($pref['id'] ?? '');
         $initPoint = (string)($pref['init_point'] ?? '');
-        $sandboxPoint = (string)($pref['sandbox_init_point'] ?? '');
-        if (!empty($mpCfg['use_sandbox']) && $sandboxPoint !== '') {
-            $initPoint = $sandboxPoint;
-        }
         if ($prefId !== '') {
             $pdo->prepare("UPDATE appointments SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
                 ->execute([':pid'=>$prefId, ':bid'=>$bid, ':id'=>(int)$a['id']]);
@@ -90,10 +85,6 @@ try {
         // MercadoPago preference API doesn't give init_point via GET in a stable way; so we rebuild if needed.
         $pref = mp_create_preference($pdo, $bid, $a, $service, $branch);
         $initPoint = (string)($pref['init_point'] ?? '');
-        $sandboxPoint = (string)($pref['sandbox_init_point'] ?? '');
-        if (!empty($mpCfg['use_sandbox']) && $sandboxPoint !== '') {
-            $initPoint = $sandboxPoint;
-        }
     }
 } catch (Throwable $e) {
     $initPoint = '';
@@ -138,6 +129,11 @@ try {
       <?php if ($initPoint): ?>
         <a class="btn" href="<?php echo h($initPoint); ?>" target="_blank" rel="noopener"><?php echo h($paymentActionText); ?></a>
         <p class="muted" style="margin-bottom:0;margin-top:10px">Se abre MercadoPago en otra pestaña.</p>
+        <?php $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' . urlencode($initPoint); ?>
+        <div style="margin-top:14px">
+          <div class="muted" style="margin-bottom:8px">O pagá escaneando este QR:</div>
+          <img src="<?php echo h($qrUrl); ?>" alt="QR de pago MercadoPago" width="220" height="220" style="border:1px solid #e5e7eb;border-radius:10px;padding:6px;background:#fff">
+        </div>
       <?php else: ?>
         <p class="danger">No se pudo generar el link de pago.</p>
         <a class="btn" href="manage.php?token=<?php echo urlencode($token); ?>">Volver</a>
