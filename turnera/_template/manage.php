@@ -249,6 +249,27 @@ if (!$a) {
 $now = now_tz();
 $start = parse_db_datetime((string)$a['start_at']);
 $end = parse_db_datetime((string)$a['end_at']);
+$paymentExpiresAtRaw = trim((string)($a['payment_expires_at'] ?? ''));
+// Self-heal: if a pending-payment booking was marked expired prematurely but the
+// payment window is still open, restore it so the user can pay.
+if ((string)($a['status'] ?? '') === 'VENCIDO'
+    && in_array((string)($a['payment_status'] ?? ''), ['expired', 'pending'], true)
+    && $paymentExpiresAtRaw !== ''
+) {
+    try {
+        $paymentExp = parse_db_datetime($paymentExpiresAtRaw);
+        if ($paymentExp > $now) {
+            $pdo->prepare("UPDATE appointments
+                           SET status='PENDIENTE_PAGO', payment_status='pending', updated_at=CURRENT_TIMESTAMP
+                           WHERE business_id=:bid AND id=:id")
+                ->execute([':bid'=>$bid, ':id'=>(int)$a['id']]);
+            $a['status'] = 'PENDIENTE_PAGO';
+            $a['payment_status'] = 'pending';
+        }
+    } catch (Throwable $e) {
+        // Non-fatal; keep current status if expiration value is malformed.
+    }
+}
 $durationMin = (int)round(($end->getTimestamp() - $start->getTimestamp()) / 60);
 if ($durationMin < 0) $durationMin = 0;
 $requestedStart = (!empty($a['requested_start_at'])) ? parse_db_datetime((string)$a['requested_start_at']) : null;
