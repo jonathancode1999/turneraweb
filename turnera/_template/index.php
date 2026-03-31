@@ -351,7 +351,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <div class="row">
         <div style="flex:1;min-width:280px">
           <label>Email (opcional)</label>
-          <input type="email" name="customer_email" maxlength="120" placeholder="Ej: tuemail@dominio.com" value="<?php echo h((string)($bookingOld['customer_email'] ?? '')); ?>">
+          <input type="email" name="customer_email" <?php echo $publicRequiresPayment ? 'required' : ''; ?> maxlength="120" placeholder="Ej: tuemail@dominio.com" value="<?php echo h((string)($bookingOld['customer_email'] ?? '')); ?>">
           <p class="muted small" style="margin:6px 0 0 0">Recomendado: te enviamos un <b>link único</b> para ver el estado del turno (pendiente / aprobado / cancelado) y poder gestionarlo.</p>
         </div>
       </div>
@@ -416,7 +416,10 @@ page_head('Reservar turno', 'public-light', $headerHtml);
             <div id="payAmountText" style="margin-top:6px;font-size:24px;font-weight:800;color:#111"></div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
               <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
-              <div id="paySpinner" class="muted small" style="display:none;margin-bottom:8px">⏳ Cargando pago seguro...</div>
+              <div id="paySpinner" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,.75);align-items:center;justify-content:center;flex-direction:column;gap:12px">
+                <div style="width:42px;height:42px;border:4px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .9s linear infinite"></div>
+                <div class="muted small" id="paySpinnerText">Cargando pago seguro...</div>
+              </div>
               <div id="cardPaymentBrick_container"></div>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
@@ -449,6 +452,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
     if ($sid > 0) $serviceBarbersMap[$sid] = service_allowed_barber_ids($bid, $branchId, $sid);
   }
 ?>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
 <script src="https://sdk.mercadopago.com/js/v2"></script>
 <script>
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
@@ -485,6 +489,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const cardFormWrap = document.getElementById('cardFormWrap');
   const cardFormStatus = document.getElementById('cardFormStatus');
   const paySpinner = document.getElementById('paySpinner');
+  const paySpinnerText = document.getElementById('paySpinnerText');
   const payInlineMsg = document.getElementById('payInlineMsg');
   let pendingAttemptToken = '';
   let currentPublicKey = '';
@@ -777,6 +782,12 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     if (!form) return;
     if (pendingAttemptToken) return;
     if ((barberInput.value === '') || !serviceInput.value || !dateInput.value || !timeInput.value) return;
+    const payerEmailInput = document.querySelector('input[name="customer_email"]');
+    const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value.trim() : '';
+    if (!payerEmail) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Para pagar con tarjeta completá el email en el paso 5.';
+      return;
+    }
     if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
     setSpinner(true, '⏳ Preparando intento de pago...');
     try {
@@ -820,8 +831,8 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
 
   function setSpinner(on, text){
     if (!paySpinner) return;
-    paySpinner.style.display = on ? '' : 'none';
-    if (text) paySpinner.textContent = text;
+    paySpinner.style.display = on ? 'flex' : 'none';
+    if (text && paySpinnerText) paySpinnerText.textContent = text;
   }
 
   function mountCardForm(){
