@@ -703,7 +703,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   }
 
   async function loadTimes(){
-    submit.disabled = true;
+    if (submit) submit.disabled = true;
     timesWrap.innerHTML = '';
     timesHelp.textContent = 'Cargando horarios...';
 
