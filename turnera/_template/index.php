@@ -31,6 +31,11 @@ if (!$branch) {
 
 $business = $pdo->query('SELECT * FROM businesses WHERE id=' . $bid)->fetch();
 $branches = branches_all_active();
+$publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
+$publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
+$publicSubmitText = 'Solicitar turno';
+if ($publicPaymentMode === 'DEPOSIT') $publicSubmitText = 'Pagar seña';
+if ($publicPaymentMode === 'FULL') $publicSubmitText = 'Pagar total';
 
 // Map embed helper
 $mapEmbed = '';
@@ -372,7 +377,11 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <div class="notice" style="margin:0 0 12px 0">
         <b>Reglas</b>
         <ul class="muted" style="margin:8px 0 0 18px">
-          <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php if ($publicRequiresPayment): ?>
+            <li>Para confirmar tu turno vas a <b><?php echo h(strtolower($publicSubmitText)); ?></b> en MercadoPago.</li>
+          <?php else: ?>
+            <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php endif; ?>
           <?php if ((int)($business['cancel_notice_minutes'] ?? 0) > 0): ?>
             <li>Cancelación con al menos <b><?php echo (int)($business['cancel_notice_minutes'] ?? 0); ?> min</b> de anticipación.</li>
           <?php else: ?>
@@ -396,9 +405,13 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 
       <div class="step-actions">
         <button type="button" class="btn" data-back="5">Atrás</button>
-        <button type="submit" class="btn primary" id="submitBtn" disabled>Solicitar turno</button>
+        <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
       </div>
-      <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php if ($publicRequiresPayment): ?>
+        <p class="muted small">Luego te redirigimos a MercadoPago para completar el pago y confirmar el turno.</p>
+      <?php else: ?>
+        <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php endif; ?>
       </div>
     </form>
   </div>
