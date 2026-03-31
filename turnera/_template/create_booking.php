@@ -11,6 +11,16 @@ require_once __DIR__ . '/includes/anti_spam.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
+$accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+$isAjax = (isset($_POST['ajax']) && (string)$_POST['ajax'] === '1')
+    || strpos($accept, 'application/json') !== false;
+
+function booking_json_response(array $payload, int $status = 200): void {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     redirect('index.php');
@@ -22,6 +32,9 @@ try {
     spam_honeypot_check('website');
     spam_captcha_require_post('captcha_answer');
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     // UX: return to the booking form with a friendly inline error (no white screen).
     flash_set('booking_error', $e->getMessage());
     // Keep user-entered fields so they don't have to type again.
@@ -71,6 +84,9 @@ $phone = trim($_POST['customer_phone'] ?? '');
 try {
     spam_cooldown_phone('booking', $phone, 3, 120);
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     // Same UX as captcha: keep the user on the form.
     flash_set('booking_error', $e->getMessage());
     flash_set('booking_old', json_encode([
@@ -90,6 +106,9 @@ $email = trim($_POST['customer_email'] ?? '');
 $notes = trim($_POST['notes'] ?? '');
 
 if ($serviceId <= 0 || !$date || !$time || $name === '' || $phone === '') {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => 'Datos incompletos.'], 400);
+    }
     http_response_code(400);
     echo "Datos incompletos. <a href='index.php'>Volver</a>";
     exit;
@@ -271,9 +290,29 @@ try {
             // Non-fatal
         }
     }
+    if ($isAjax) {
+        if ($needsPayment) {
+            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' . urlencode((string)$redirectUrl);
+            booking_json_response([
+                'ok' => true,
+                'requires_payment' => true,
+                'token' => $token,
+                'init_point' => $redirectUrl,
+                'qr_url' => $qrUrl,
+            ]);
+        }
+        booking_json_response([
+            'ok' => true,
+            'requires_payment' => false,
+            'manage_url' => $redirectUrl,
+        ]);
+    }
     redirect($redirectUrl);
 
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     http_response_code(400);
     echo "Error: " . h($e->getMessage()) . "<br><a href='index.php'>Volver</a>";
 }

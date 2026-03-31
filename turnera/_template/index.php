@@ -408,7 +408,24 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
       </div>
       <?php if ($publicRequiresPayment): ?>
-        <p class="muted small">Ahora pasás al pago online. Cuando MercadoPago confirme, el turno queda confirmado.</p>
+        <div id="paymentInline" style="display:none;margin-top:12px">
+          <div class="notice">
+            <b>Elegí cómo pagar</b>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn" id="payModeQr">QR</button>
+              <button type="button" class="btn" id="payModeCard">Tarjeta</button>
+            </div>
+            <div id="payQrBox" style="display:none;margin-top:10px">
+              <div class="muted small" style="margin-bottom:6px">Escaneá y pagá. Cuando se acredite, se crea el turno automáticamente.</div>
+              <img id="payQrImage" src="" alt="QR de pago" width="220" height="220" style="border:1px solid #e5e7eb;border-radius:10px;padding:6px;background:#fff">
+            </div>
+            <div id="payCardBox" style="display:none;margin-top:10px">
+              <div class="muted small" style="margin-bottom:6px">Abrimos el formulario seguro de Mercado Pago para tarjeta.</div>
+              <a class="btn primary" id="payCardLink" href="#" target="_self" rel="noopener">Pagar con tarjeta</a>
+            </div>
+            <div id="payInlineMsg" class="muted small" style="margin-top:10px"></div>
+          </div>
+        </div>
       <?php else: ?>
         <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
       <?php endif; ?>
@@ -438,6 +455,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 ?>
 <script>
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
+const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?>;
 (function(){
   const serviceInput = document.getElementById('service_id');
   const barberInput = document.getElementById('professional_id');
@@ -464,6 +482,15 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
   const nextFromTime = document.getElementById('nextFromTime');
   const nextFromData = document.getElementById('nextFromData');
   const confirmSummary = document.getElementById('confirmSummary');
+  const form = document.getElementById('bookingForm');
+  const paymentInline = document.getElementById('paymentInline');
+  const payModeQr = document.getElementById('payModeQr');
+  const payModeCard = document.getElementById('payModeCard');
+  const payQrBox = document.getElementById('payQrBox');
+  const payCardBox = document.getElementById('payCardBox');
+  const payQrImage = document.getElementById('payQrImage');
+  const payCardLink = document.getElementById('payCardLink');
+  const payInlineMsg = document.getElementById('payInlineMsg');
 
   let currentStep = 1;
   function setStep(n){
@@ -740,6 +767,43 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
   function validateForm(){
     // professional_id can be "0" (primer profesional disponible)
     submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
+  }
+
+  function setPaymentView(mode){
+    if (!payQrBox || !payCardBox) return;
+    payQrBox.style.display = mode === 'qr' ? '' : 'none';
+    payCardBox.style.display = mode === 'card' ? '' : 'none';
+  }
+  if (payModeQr) payModeQr.addEventListener('click', ()=>setPaymentView('qr'));
+  if (payModeCard) payModeCard.addEventListener('click', ()=>setPaymentView('card'));
+
+  if (form && REQUIRES_PAYMENT) {
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if (submit.disabled) return;
+      submit.disabled = true;
+      if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+      try {
+        const fd = new FormData(form);
+        fd.set('ajax', '1');
+        const res = await fetch('create_booking.php', {
+          method: 'POST',
+          body: fd,
+          headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
+        if (paymentInline) paymentInline.style.display = '';
+        if (payQrImage && data.qr_url) payQrImage.src = data.qr_url;
+        if (payCardLink && data.init_point) payCardLink.href = data.init_point;
+        setPaymentView('qr');
+        if (payInlineMsg) payInlineMsg.textContent = 'Elegí QR o Tarjeta para completar el pago.';
+      } catch (err) {
+        if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
+      } finally {
+        submit.disabled = false;
+      }
+    });
   }
 
   // Gallery carousel (infinite + autoplay)
