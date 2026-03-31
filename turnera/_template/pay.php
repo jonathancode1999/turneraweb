@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/mercadopago.php';
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
 $pdo = db();
+$mpCfg = mp_cfg();
 
 $token = trim((string)($_GET['token'] ?? ''));
 if ($token === '') {
@@ -76,6 +77,10 @@ try {
         $pref = mp_create_preference($pdo, $bid, $a, $service, $branch);
         $prefId = (string)($pref['id'] ?? '');
         $initPoint = (string)($pref['init_point'] ?? '');
+        $sandboxPoint = (string)($pref['sandbox_init_point'] ?? '');
+        if (!empty($mpCfg['use_sandbox']) && $sandboxPoint !== '') {
+            $initPoint = $sandboxPoint;
+        }
         if ($prefId !== '') {
             $pdo->prepare("UPDATE appointments SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
                 ->execute([':pid'=>$prefId, ':bid'=>$bid, ':id'=>(int)$a['id']]);
@@ -85,6 +90,10 @@ try {
         // MercadoPago preference API doesn't give init_point via GET in a stable way; so we rebuild if needed.
         $pref = mp_create_preference($pdo, $bid, $a, $service, $branch);
         $initPoint = (string)($pref['init_point'] ?? '');
+        $sandboxPoint = (string)($pref['sandbox_init_point'] ?? '');
+        if (!empty($mpCfg['use_sandbox']) && $sandboxPoint !== '') {
+            $initPoint = $sandboxPoint;
+        }
     }
 } catch (Throwable $e) {
     $initPoint = '';

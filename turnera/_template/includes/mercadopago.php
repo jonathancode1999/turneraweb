@@ -21,11 +21,13 @@ function mp_cfg(): array {
     $clientId = getenv('MP_CLIENT_ID') ?: (string)($cfg['mp_client_id'] ?? '');
     $clientSecret = getenv('MP_CLIENT_SECRET') ?: (string)($cfg['mp_client_secret'] ?? '');
     $redirectUri = getenv('MP_REDIRECT_URI') ?: (string)($cfg['mp_redirect_uri'] ?? '');
+    $useSandboxRaw = getenv('MP_USE_SANDBOX') ?: (string)($cfg['mp_use_sandbox'] ?? '');
 
     // If not set in env/config, fallback to global meta (configured by Super Admin)
     if ($clientId === '') $clientId = mp_meta_get('mp_client_id');
     if ($clientSecret === '') $clientSecret = mp_meta_get('mp_client_secret');
     if ($redirectUri === '') $redirectUri = mp_meta_get('mp_redirect_uri');
+    if ($useSandboxRaw === '') $useSandboxRaw = mp_meta_get('mp_use_sandbox');
 
     // Final fallback: guess redirect URI for this client install (recommended)
     if ($redirectUri === '') {
@@ -33,10 +35,13 @@ function mp_cfg(): array {
         if ($base !== '') $redirectUri = rtrim($base, '/') . '/p9a7x_control/mp_callback.php';
     }
 
+    $useSandbox = in_array(strtolower(trim((string)$useSandboxRaw)), ['1', 'true', 'yes', 'on'], true);
+
     return [
         'client_id' => $clientId,
         'client_secret' => $clientSecret,
         'redirect_uri' => $redirectUri,
+        'use_sandbox' => $useSandbox,
     ];
 }
 

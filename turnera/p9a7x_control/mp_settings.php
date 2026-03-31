@@ -14,12 +14,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $cid = trim((string)($_POST['mp_client_id'] ?? ''));
   $csec = trim((string)($_POST['mp_client_secret'] ?? ''));
   $ruri = trim((string)($_POST['mp_redirect_uri'] ?? ''));
+  $useSandbox = isset($_POST['mp_use_sandbox']) ? '1' : '0';
 
   try {
     $st = $pdo->prepare("REPLACE INTO meta(`key`,`value`) VALUES(:k,:v)");
     $st->execute([':k'=>'mp_client_id', ':v'=>$cid]);
     $st->execute([':k'=>'mp_client_secret', ':v'=>$csec]);
     $st->execute([':k'=>'mp_redirect_uri', ':v'=>$ruri]); // opcional (si queda vacío, se auto-deduce por cliente)
+    $st->execute([':k'=>'mp_use_sandbox', ':v'=>$useSandbox]); // 1=usar sandbox_init_point al pagar
     $notice = 'Guardado.';
   } catch (Throwable $e) {
     $error = 'No se pudo guardar: ' . $e->getMessage();
@@ -36,6 +38,7 @@ function meta_get_sa(PDO $pdo, string $k): string {
 $cid = meta_get_sa($pdo, 'mp_client_id');
 $csec = meta_get_sa($pdo, 'mp_client_secret');
 $ruri = meta_get_sa($pdo, 'mp_redirect_uri');
+$useSandbox = meta_get_sa($pdo, 'mp_use_sandbox');
 
 header_html('MercadoPago (técnico)');
 ?>
@@ -65,6 +68,11 @@ header_html('MercadoPago (técnico)');
 
     <label style="margin-top:10px;">MP_REDIRECT_URI (opcional)</label>
     <input type="text" name="mp_redirect_uri" value="<?php echo h($ruri); ?>" placeholder="https://tudominio.com/cliente/p9a7x_control/mp_callback.php">
+
+    <label style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" name="mp_use_sandbox" value="1" <?php echo in_array(strtolower(trim((string)$useSandbox)), ['1','true','yes','on'], true) ? 'checked' : ''; ?>>
+      Usar sandbox de MercadoPago para pruebas (sandbox_init_point)
+    </label>
 
     <div style="margin-top:12px;display:flex;gap:10px;">
       <button class="btn" type="submit">Guardar</button>
