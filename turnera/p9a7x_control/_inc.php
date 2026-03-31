@@ -122,6 +122,7 @@ function admin_client_runtime_files(): array {
     'index.php',
     'api.php',
     'create_booking.php',
+    'pay_card.php',
     'manage.php',
     'manage_lookup.php',
     'ics.php',
@@ -157,6 +158,7 @@ function admin_client_force_refresh_files(): array {
   return [
     'index.php',
     'create_booking.php',
+    'pay_card.php',
     'manage.php',
     'pay.php',
     'mp_return.php',

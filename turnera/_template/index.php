@@ -411,7 +411,22 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <div class="notice">
             <b>Pago con tarjeta</b>
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <a class="btn primary" id="payCardLink" href="#" target="_self" rel="noopener" aria-disabled="true" style="pointer-events:none;opacity:.6">Pagar con tarjeta</a>
+              <button type="button" class="btn primary" id="payCardInitBtn" disabled>Cargar formulario de tarjeta</button>
+            </div>
+            <div id="cardFormWrap" style="display:none;margin-top:10px">
+              <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
+              <form id="form-checkout">
+                <input type="text" id="form-checkout__cardNumber" placeholder="Número de tarjeta" />
+                <input type="text" id="form-checkout__expirationDate" placeholder="MM/AA" />
+                <input type="text" id="form-checkout__securityCode" placeholder="CVV" />
+                <input type="text" id="form-checkout__cardholderName" placeholder="Titular" />
+                <select id="form-checkout__issuer"></select>
+                <select id="form-checkout__installments"></select>
+                <select id="form-checkout__identificationType"></select>
+                <input type="text" id="form-checkout__identificationNumber" placeholder="Documento" />
+                <input type="email" id="form-checkout__cardholderEmail" placeholder="Email" />
+                <button type="submit" id="form-checkout__submit" class="btn primary">Pagar con tarjeta</button>
+              </form>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Completá los datos y tocá <b>Solicitar turno</b> para generar las opciones de pago.</div>
           </div>
@@ -443,6 +458,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
     if ($sid > 0) $serviceBarbersMap[$sid] = service_allowed_barber_ids($bid, $branchId, $sid);
   }
 ?>
+<script src="https://sdk.mercadopago.com/js/v2"></script>
 <script>
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
 const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?>;
@@ -474,8 +490,14 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const confirmSummary = document.getElementById('confirmSummary');
   const form = document.getElementById('bookingForm');
   const paymentInline = document.getElementById('paymentInline');
-  const payCardLink = document.getElementById('payCardLink');
+  const payCardInitBtn = document.getElementById('payCardInitBtn');
+  const cardFormWrap = document.getElementById('cardFormWrap');
+  const cardFormStatus = document.getElementById('cardFormStatus');
   const payInlineMsg = document.getElementById('payInlineMsg');
+  let pendingAttemptToken = '';
+  let currentPublicKey = '';
+  let currentAmount = 0;
+  let cardFormInstance = null;
 
   let currentStep = 1;
   function setStep(n){
@@ -771,19 +793,93 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
         if (paymentInline) paymentInline.style.display = '';
-        if (payCardLink && data.init_point) {
-          payCardLink.href = data.init_point;
-          payCardLink.style.pointerEvents = '';
-          payCardLink.style.opacity = '';
-          payCardLink.setAttribute('aria-disabled', 'false');
-        }
-        if (payInlineMsg) payInlineMsg.textContent = 'Listo. Tocá "Pagar con tarjeta" para completar el pago.';
+        pendingAttemptToken = String(data.token || '');
+        currentPublicKey = String(data.public_key || '');
+        currentAmount = Number(data.amount || 0);
+        if (payCardInitBtn) payCardInitBtn.disabled = !(pendingAttemptToken && currentPublicKey && currentAmount > 0);
+        if (payInlineMsg) payInlineMsg.textContent = 'Listo. Tocá "Cargar formulario de tarjeta".';
       } catch (err) {
         if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
       } finally {
         submit.disabled = false;
       }
     });
+  }
+
+  async function sendCardPayment(payload){
+    const res = await fetch('pay_card.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  }
+
+  function mountCardForm(){
+    if (!window.MercadoPago) {
+      if (payInlineMsg) payInlineMsg.textContent = 'No cargó el SDK de Mercado Pago.';
+      return;
+    }
+    if (!currentPublicKey || !pendingAttemptToken || currentAmount <= 0) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Primero generá un intento de pago con "Solicitar turno".';
+      return;
+    }
+    if (cardFormWrap) cardFormWrap.style.display = '';
+    const payerEmailInput = document.querySelector('input[name="customer_email"]');
+    const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value : '';
+    const emailField = document.getElementById('form-checkout__cardholderEmail');
+    if (emailField && payerEmail) emailField.value = payerEmail;
+    if (cardFormStatus) cardFormStatus.textContent = 'Completá tu tarjeta para pagar.';
+
+    const mp = new MercadoPago(currentPublicKey, {locale: 'es-AR'});
+    if (cardFormInstance && typeof cardFormInstance.unmount === 'function') {
+      cardFormInstance.unmount();
+    }
+    cardFormInstance = mp.cardForm({
+      amount: String(currentAmount),
+      autoMount: true,
+      form: {
+        id: "form-checkout",
+        cardNumber: { id: "form-checkout__cardNumber" },
+        expirationDate: { id: "form-checkout__expirationDate" },
+        securityCode: { id: "form-checkout__securityCode" },
+        cardholderName: { id: "form-checkout__cardholderName" },
+        issuer: { id: "form-checkout__issuer" },
+        installments: { id: "form-checkout__installments" },
+        identificationType: { id: "form-checkout__identificationType" },
+        identificationNumber: { id: "form-checkout__identificationNumber" },
+        cardholderEmail: { id: "form-checkout__cardholderEmail" },
+      },
+      callbacks: {
+        onSubmit: async (event) => {
+          event.preventDefault();
+          const d = cardFormInstance.getCardFormData();
+          if (cardFormStatus) cardFormStatus.textContent = 'Procesando pago...';
+          const out = await sendCardPayment({
+            attempt_token: pendingAttemptToken,
+            card_token: d.token,
+            payment_method_id: d.paymentMethodId,
+            issuer_id: d.issuerId,
+            installments: d.installments,
+            payer_email: d.cardholderEmail,
+            doc_type: d.identificationType,
+            doc_number: d.identificationNumber,
+          });
+          if (out.ok && out.status === 'approved' && out.manage_url) {
+            window.location.href = out.manage_url;
+            return;
+          }
+          if (cardFormStatus) cardFormStatus.textContent = out.error || 'No se pudo aprobar el pago.';
+        },
+        onError: (error) => {
+          if (cardFormStatus) cardFormStatus.textContent = (error && error.message) ? error.message : 'Error con el formulario de tarjeta.';
+        },
+      }
+    });
+  }
+
+  if (payCardInitBtn) {
+    payCardInitBtn.addEventListener('click', mountCardForm);
   }
 
   // Gallery carousel (infinite + autoplay)

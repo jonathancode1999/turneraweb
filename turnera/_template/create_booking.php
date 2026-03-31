@@ -212,22 +212,26 @@ try {
             ]);
 
             $attemptId = (int)$pdo->lastInsertId();
-            $branchForMp = is_array($branch) ? $branch : [];
-            $pref = mp_create_preference($pdo, $bid, [
-                'id' => $attemptId,
-                'token' => $token,
-                'payment_amount_ars' => $paymentAmount,
-            ], $service, $branchForMp);
-            $prefId = (string)($pref['id'] ?? '');
-            $initPoint = (string)($pref['init_point'] ?? '');
-            if ($prefId !== '') {
-                $pdo->prepare("UPDATE payment_attempts SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
-                    ->execute([':pid' => $prefId, ':bid' => $bid, ':id' => $attemptId]);
+            if ($isAjax) {
+                $redirectUrl = '';
+            } else {
+                $branchForMp = is_array($branch) ? $branch : [];
+                $pref = mp_create_preference($pdo, $bid, [
+                    'id' => $attemptId,
+                    'token' => $token,
+                    'payment_amount_ars' => $paymentAmount,
+                ], $service, $branchForMp);
+                $prefId = (string)($pref['id'] ?? '');
+                $initPoint = (string)($pref['init_point'] ?? '');
+                if ($prefId !== '') {
+                    $pdo->prepare("UPDATE payment_attempts SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
+                        ->execute([':pid' => $prefId, ':bid' => $bid, ':id' => $attemptId]);
+                }
+                if ($initPoint === '') {
+                    throw new RuntimeException('No se pudo iniciar el pago en MercadoPago.');
+                }
+                $redirectUrl = $initPoint;
             }
-            if ($initPoint === '') {
-                throw new RuntimeException('No se pudo iniciar el pago en MercadoPago.');
-            }
-            $redirectUrl = $initPoint;
         } else {
             $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
                                    VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
@@ -292,13 +296,14 @@ try {
     }
     if ($isAjax) {
         if ($needsPayment) {
-            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' . urlencode((string)$redirectUrl);
+            $mpCfg = mp_cfg();
             booking_json_response([
                 'ok' => true,
                 'requires_payment' => true,
                 'token' => $token,
                 'init_point' => $redirectUrl,
-                'qr_url' => $qrUrl,
+                'public_key' => (string)($mpCfg['public_key'] ?? ''),
+                'amount' => (int)$paymentAmount,
             ]);
         }
         booking_json_response([
