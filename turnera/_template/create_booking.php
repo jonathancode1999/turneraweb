@@ -143,81 +143,39 @@ try {
         }
     }
     try {
-        $business = get_business($bid);
-        $paymentModeBiz = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
-        $needsPayment = in_array($paymentModeBiz, ['DEPOSIT','FULL'], true);
-
+        $needsPayment = false;
         $status = 'PENDIENTE_APROBACION';
         $paymentStatus = 'none';
         $paymentMode = 'none';
         $paymentAmount = 0;
+        $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
+                               VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
+        $stmt->execute(array(
+            ':bid' => $bid,
+            ':brid' => $branchId,
+            ':bar' => $barberId,
+            ':sid' => $serviceId,
+            ':n' => $name,
+            ':ph' => $phone,
+            ':em' => $email,
+            ':notes' => $notes,
+            ':s' => $start->format('Y-m-d H:i:s'),
+            ':e' => $end->format('Y-m-d H:i:s'),
+            ':st' => $status,
+            ':t' => $token,
+            ':price' => (int)($service['price_ars'] ?? 0),
+            ':pstat' => $paymentStatus,
+            ':pmode' => $paymentMode,
+            ':pamt' => $paymentAmount,
+            ':pexp' => null,
+        ));
 
-        if ($needsPayment) {
-            $paymentMode = ($paymentModeBiz === 'FULL') ? 'full' : 'deposit';
-
-            $price = (int)($service['price_ars'] ?? 0);
-            if ($paymentModeBiz === 'FULL') {
-                $paymentAmount = max(0, $price);
-            } else {
-                $pct = null;
-                if (isset($service['deposit_percent_override']) && $service['deposit_percent_override'] !== null && $service['deposit_percent_override'] !== '') {
-                    $pct = (int)$service['deposit_percent_override'];
-                }
-                if ($pct === null) $pct = (int)($business['deposit_percent_default'] ?? 30);
-                $pct = max(0, min(100, $pct));
-                $paymentAmount = (int)round($price * ($pct / 100.0));
-            }
-        }
-
-        if ($needsPayment) {
-            $stmt = $pdo->prepare('INSERT INTO payment_attempts (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, payment_mode, payment_amount_ars, token, status)
-                                   VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :pmode, :pamt, :t, :st)');
-            $stmt->execute([
-                ':bid' => $bid,
-                ':brid' => $branchId,
-                ':bar' => $barberId,
-                ':sid' => $serviceId,
-                ':n' => $name,
-                ':ph' => $phone,
-                ':em' => $email,
-                ':notes' => $notes,
-                ':s' => $start->format('Y-m-d H:i:s'),
-                ':e' => $end->format('Y-m-d H:i:s'),
-                ':pmode' => $paymentMode,
-                ':pamt' => $paymentAmount,
-                ':t' => $token,
-                ':st' => 'pending',
-            ]);
-        } else {
-            $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
-                                   VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
-            $stmt->execute(array(
-                ':bid' => $bid,
-                ':brid' => $branchId,
-                ':bar' => $barberId,
-                ':sid' => $serviceId,
-                ':n' => $name,
-                ':ph' => $phone,
-                ':em' => $email,
-                ':notes' => $notes,
-                ':s' => $start->format('Y-m-d H:i:s'),
-                ':e' => $end->format('Y-m-d H:i:s'),
-                ':st' => $status,
-                ':t' => $token,
-                ':price' => (int)($service['price_ars'] ?? 0),
-                ':pstat' => $paymentStatus,
-                ':pmode' => $paymentMode,
-                ':pamt' => $paymentAmount,
-                ':pexp' => null,
-            ));
-
-            $apptId = (int)$pdo->lastInsertId();
-            if ($apptId > 0) {
-                appt_log_event($bid, $branchId, $apptId, 'created', 'Turno creado por el cliente', [
-                    'status' => 'PENDIENTE_APROBACION',
-                    'start_at' => $start->format('Y-m-d H:i:s'),
-                ], 'customer');
-            }
+        $apptId = (int)$pdo->lastInsertId();
+        if ($apptId > 0) {
+            appt_log_event($bid, $branchId, $apptId, 'created', 'Turno creado por el cliente', [
+                'status' => 'PENDIENTE_APROBACION',
+                'start_at' => $start->format('Y-m-d H:i:s'),
+            ], 'customer');
         }
         if (!empty($startedTx) && $pdo->inTransaction()) {
             $pdo->commit();
@@ -249,11 +207,7 @@ try {
         // Non-fatal
     }
 
-    if ($needsPayment) {
-        redirect('pay.php?token=' . urlencode($token));
-    } else {
-        redirect('manage.php?token=' . urlencode($token));
-    }
+    redirect('manage.php?token=' . urlencode($token));
 
 } catch (Throwable $e) {
     http_response_code(400);
