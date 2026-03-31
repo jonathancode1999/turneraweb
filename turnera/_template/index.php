@@ -409,18 +409,9 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <?php if ($publicRequiresPayment): ?>
         <div id="paymentInline" style="display:block;margin-top:12px">
           <div class="notice">
-            <b>Elegí cómo pagar</b>
+            <b>Pago con tarjeta</b>
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn" id="payModeQr" disabled>QR</button>
-              <button type="button" class="btn" id="payModeCard" disabled>Tarjeta</button>
-            </div>
-            <div id="payQrBox" style="display:none;margin-top:10px">
-              <div class="muted small" style="margin-bottom:6px">Escaneá y pagá. Cuando se acredite, se crea el turno automáticamente.</div>
-              <img id="payQrImage" src="" alt="QR de pago" width="220" height="220" style="border:1px solid #e5e7eb;border-radius:10px;padding:6px;background:#fff">
-            </div>
-            <div id="payCardBox" style="display:none;margin-top:10px">
-              <div class="muted small" style="margin-bottom:6px">Abrimos el formulario seguro de Mercado Pago para tarjeta.</div>
-              <a class="btn primary" id="payCardLink" href="#" target="_self" rel="noopener">Pagar con tarjeta</a>
+              <a class="btn primary" id="payCardLink" href="#" target="_self" rel="noopener" aria-disabled="true" style="pointer-events:none;opacity:.6">Pagar con tarjeta</a>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Completá los datos y tocá <b>Solicitar turno</b> para generar las opciones de pago.</div>
           </div>
@@ -483,11 +474,6 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const confirmSummary = document.getElementById('confirmSummary');
   const form = document.getElementById('bookingForm');
   const paymentInline = document.getElementById('paymentInline');
-  const payModeQr = document.getElementById('payModeQr');
-  const payModeCard = document.getElementById('payModeCard');
-  const payQrBox = document.getElementById('payQrBox');
-  const payCardBox = document.getElementById('payCardBox');
-  const payQrImage = document.getElementById('payQrImage');
   const payCardLink = document.getElementById('payCardLink');
   const payInlineMsg = document.getElementById('payInlineMsg');
 
@@ -768,14 +754,6 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
   }
 
-  function setPaymentView(mode){
-    if (!payQrBox || !payCardBox) return;
-    payQrBox.style.display = mode === 'qr' ? '' : 'none';
-    payCardBox.style.display = mode === 'card' ? '' : 'none';
-  }
-  if (payModeQr) payModeQr.addEventListener('click', ()=>setPaymentView('qr'));
-  if (payModeCard) payModeCard.addEventListener('click', ()=>setPaymentView('card'));
-
   if (form && REQUIRES_PAYMENT) {
     form.addEventListener('submit', async (e)=>{
       e.preventDefault();
@@ -793,12 +771,13 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
         if (paymentInline) paymentInline.style.display = '';
-        if (payModeQr) payModeQr.disabled = false;
-        if (payModeCard) payModeCard.disabled = false;
-        if (payQrImage && data.qr_url) payQrImage.src = data.qr_url;
-        if (payCardLink && data.init_point) payCardLink.href = data.init_point;
-        setPaymentView('qr');
-        if (payInlineMsg) payInlineMsg.textContent = 'Elegí QR o Tarjeta para completar el pago.';
+        if (payCardLink && data.init_point) {
+          payCardLink.href = data.init_point;
+          payCardLink.style.pointerEvents = '';
+          payCardLink.style.opacity = '';
+          payCardLink.setAttribute('aria-disabled', 'false');
+        }
+        if (payInlineMsg) payInlineMsg.textContent = 'Listo. Tocá "Pagar con tarjeta" para completar el pago.';
       } catch (err) {
         if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
       } finally {
