@@ -152,6 +152,12 @@ function admin_client_runtime_files(): array {
 
 function admin_client_force_refresh_files(): array {
   return [
+    'index.php',
+    'create_booking.php',
+    'manage.php',
+    'pay.php',
+    'mp_return.php',
+    'mp_webhook.php',
     'includes/auth.php',
     'includes/availability.php',
     'includes/config.php',
