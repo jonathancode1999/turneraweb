@@ -34,7 +34,6 @@ $branches = branches_all_active();
 $publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
 $publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
 $publicSubmitText = 'Solicitar turno';
-if ($publicRequiresPayment) $publicSubmitText = 'Continuar al pago';
 
 // Map embed helper
 $mapEmbed = '';
@@ -408,12 +407,12 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
       </div>
       <?php if ($publicRequiresPayment): ?>
-        <div id="paymentInline" style="display:none;margin-top:12px">
+        <div id="paymentInline" style="display:block;margin-top:12px">
           <div class="notice">
             <b>Elegí cómo pagar</b>
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn" id="payModeQr">QR</button>
-              <button type="button" class="btn" id="payModeCard">Tarjeta</button>
+              <button type="button" class="btn" id="payModeQr" disabled>QR</button>
+              <button type="button" class="btn" id="payModeCard" disabled>Tarjeta</button>
             </div>
             <div id="payQrBox" style="display:none;margin-top:10px">
               <div class="muted small" style="margin-bottom:6px">Escaneá y pagá. Cuando se acredite, se crea el turno automáticamente.</div>
@@ -423,7 +422,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
               <div class="muted small" style="margin-bottom:6px">Abrimos el formulario seguro de Mercado Pago para tarjeta.</div>
               <a class="btn primary" id="payCardLink" href="#" target="_self" rel="noopener">Pagar con tarjeta</a>
             </div>
-            <div id="payInlineMsg" class="muted small" style="margin-top:10px"></div>
+            <div id="payInlineMsg" class="muted small" style="margin-top:10px">Completá los datos y tocá <b>Solicitar turno</b> para generar las opciones de pago.</div>
           </div>
         </div>
       <?php else: ?>
@@ -794,6 +793,8 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
         if (paymentInline) paymentInline.style.display = '';
+        if (payModeQr) payModeQr.disabled = false;
+        if (payModeCard) payModeCard.disabled = false;
         if (payQrImage && data.qr_url) payQrImage.src = data.qr_url;
         if (payCardLink && data.init_point) payCardLink.href = data.init_point;
         setPaymentView('qr');
