@@ -34,8 +34,6 @@ $branches = branches_all_active();
 $publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
 $publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
 $publicSubmitText = 'Solicitar turno';
-if ($publicPaymentMode === 'DEPOSIT') $publicSubmitText = 'Pagar seña';
-if ($publicPaymentMode === 'FULL') $publicSubmitText = 'Pagar total';
 
 // Map embed helper
 $mapEmbed = '';
@@ -378,7 +376,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <b>Reglas</b>
         <ul class="muted" style="margin:8px 0 0 18px">
           <?php if ($publicRequiresPayment): ?>
-            <li>Para confirmar tu turno vas a <b><?php echo h(strtolower($publicSubmitText)); ?></b> en MercadoPago.</li>
+            <li>Si el local requiere pago online, te vamos a redirigir a MercadoPago para confirmar el turno.</li>
           <?php else: ?>
             <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
           <?php endif; ?>
@@ -408,7 +406,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
       </div>
       <?php if ($publicRequiresPayment): ?>
-        <p class="muted small">Luego te redirigimos a MercadoPago para completar el pago y confirmar el turno.</p>
+        <p class="muted small">Si corresponde, después te redirigimos a MercadoPago para completar el pago y confirmar el turno.</p>
       <?php else: ?>
         <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
       <?php endif; ?>
