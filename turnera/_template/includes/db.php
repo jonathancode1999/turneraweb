@@ -96,6 +96,17 @@ function db(): PDO {
     return $pdo;
 }
 
+function app_now_local_sql(): string {
+    $cfg = app_config();
+    $tzName = (string)($cfg['timezone'] ?? 'UTC');
+    try {
+        $tz = new DateTimeZone($tzName);
+    } catch (Throwable $e) {
+        $tz = new DateTimeZone('UTC');
+    }
+    return (new DateTimeImmutable('now', $tz))->format('Y-m-d H:i:s');
+}
+
 function db_table_exists(PDO $pdo, string $name): bool {
     $st = $pdo->prepare(
         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
@@ -744,8 +755,8 @@ function expire_pending_payments(PDO $pdo): void {
                    WHERE status='PENDIENTE_PAGO'
                      AND payment_status='pending'
                      AND payment_expires_at IS NOT NULL
-                     AND payment_expires_at <= NOW()")
-        ->execute();
+                     AND payment_expires_at <= :now_local")
+        ->execute([':now_local' => app_now_local_sql()]);
 }
 
 function expire_pending_bookings(PDO $pdo): void {
@@ -754,6 +765,6 @@ function expire_pending_bookings(PDO $pdo): void {
         $pdo->prepare("UPDATE appointments
                    SET status='VENCIDO', updated_at=CURRENT_TIMESTAMP
                    WHERE status IN ('PENDIENTE_APROBACION','ACEPTADO','REPROGRAMACION_PENDIENTE')
-                     AND end_at <= NOW()")
-        ->execute();
+                     AND end_at <= :now_local")
+        ->execute([':now_local' => app_now_local_sql()]);
 }
