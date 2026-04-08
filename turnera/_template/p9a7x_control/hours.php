@@ -27,10 +27,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $stmtUp = $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed)
                                  VALUES (:bid, :brid, :w, :o, :c, :cl)');
         for ($w=0;$w<=6;$w++) {
-            $closed = isset($_POST['closed'][$w]) ? 1 : 0;
+            $isOpen = isset($_POST['is_open'][$w]) ? 1 : 0;
+            $closed = $isOpen ? 0 : 1;
             $open = trim($_POST['open'][$w]??'');
             $close = trim($_POST['close'][$w]??'');
-            if (!$closed) {
+            if ($isOpen) {
                 if (!$open || !$close) throw new RuntimeException('Faltan horarios para ' . $days[$w]);
                 if (!preg_match('/^\d{2}:\d{2}$/', $open) || !preg_match('/^\d{2}:\d{2}$/', $close)) {
                     throw new RuntimeException('Formato de horario inválido para ' . $days[$w]);
@@ -71,12 +72,12 @@ admin_nav('hours');
   <form method="post">
     <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
     <table class="table hours-table">
-      <thead><tr><th>Día</th><th>Cerrado</th><th>Abre</th><th>Cierra</th></tr></thead>
+      <thead><tr><th>Día</th><th>Abierto</th><th>Abre</th><th>Cierra</th></tr></thead>
       <tbody>
         <?php for ($w=0;$w<=6;$w++): $r=$byW[$w]??['is_closed'=>1,'open_time'=>'','close_time'=>'']; ?>
           <tr>
             <td><?php echo h($days[$w]); ?></td>
-            <td><input type="checkbox" name="closed[<?php echo $w; ?>]" <?php echo ((int)$r['is_closed']===1)?'checked':''; ?>></td>
+            <td><input type="checkbox" name="is_open[<?php echo $w; ?>]" <?php echo ((int)$r['is_closed']===0)?'checked':''; ?>></td>
             <td><input type="time" name="open[<?php echo $w; ?>]" value="<?php echo h($r['open_time']??''); ?>"></td>
             <td><input type="time" name="close[<?php echo $w; ?>]" value="<?php echo h($r['close_time']??''); ?>"></td>
           </tr>
