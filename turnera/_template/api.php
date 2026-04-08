@@ -11,6 +11,68 @@ $branchId = public_current_branch_id();
 $action = $_GET['action'] ?? '';
 
 try {
+    if ($action === 'days') {
+        $barberId = (int)($_GET['professional_id'] ?? 0); // 0 = primer profesional disponible
+        $serviceId = (int)($_GET['service_id'] ?? 0);
+        $month = trim((string)($_GET['month'] ?? '')); // YYYY-MM
+        if ($serviceId <= 0 || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            json_response(['ok' => false, 'error' => 'Faltan datos'], 400);
+        }
+
+        $allowedIds = service_allowed_barber_ids($bid, $branchId, $serviceId);
+        if ($barberId !== 0 && !in_array($barberId, $allowedIds, true)) {
+            json_response(['ok' => false, 'error' => 'Profesional no disponible para este servicio'], 400);
+        }
+        if ($barberId !== 0 && !service_is_barber_allowed($bid, $branchId, $serviceId, $barberId)) {
+            json_response(['ok' => false, 'error' => 'Profesional inválido para este servicio'], 400);
+        }
+
+        $tz = new DateTimeZone((string)($cfg['timezone'] ?? 'America/Argentina/Buenos_Aires'));
+        $firstDay = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $month . '-01 00:00:00', $tz);
+        if (!$firstDay) {
+            json_response(['ok' => false, 'error' => 'Mes inválido'], 400);
+        }
+        $daysInMonth = (int)$firstDay->format('t');
+        $today = new DateTimeImmutable('today', $tz);
+        $daysOut = [];
+
+        if ($barberId === 0) {
+            $pdo = db();
+            $stmt = $pdo->prepare("SELECT id FROM profesionales WHERE business_id=:bid AND branch_id=:brid AND is_active=1 ORDER BY id");
+            $stmt->execute([':bid' => $bid, ':brid' => $branchId]);
+            $pros = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            if (!empty($allowedIds)) {
+                $set = array_flip($allowedIds);
+                $pros = array_values(array_filter($pros, function($pid) use ($set) { return isset($set[(int)$pid]); }));
+            }
+            $proIds = array_map('intval', $pros);
+            for ($day = 1; $day <= $daysInMonth; $day++) {
+                $d = $firstDay->setDate((int)$firstDay->format('Y'), (int)$firstDay->format('m'), $day);
+                if ($d < $today) continue;
+                $ymd = $d->format('Y-m-d');
+                $has = false;
+                foreach ($proIds as $pid) {
+                    $times = available_times_for_day($bid, $branchId, $pid, $serviceId, $ymd);
+                    if (!empty($times)) {
+                        $has = true;
+                        break;
+                    }
+                }
+                if ($has) $daysOut[] = $day;
+            }
+        } else {
+            for ($day = 1; $day <= $daysInMonth; $day++) {
+                $d = $firstDay->setDate((int)$firstDay->format('Y'), (int)$firstDay->format('m'), $day);
+                if ($d < $today) continue;
+                $ymd = $d->format('Y-m-d');
+                $times = available_times_for_day($bid, $branchId, $barberId, $serviceId, $ymd);
+                if (!empty($times)) $daysOut[] = $day;
+            }
+        }
+
+        json_response(['ok' => true, 'days' => $daysOut]);
+    }
+
     if ($action === 'times') {
         $barberId = (int)($_GET['professional_id'] ?? 0); // 0 = primer profesional disponible
         $serviceId = (int)($_GET['service_id'] ?? 0);

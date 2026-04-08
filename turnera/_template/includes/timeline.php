@@ -5,10 +5,10 @@ require_once __DIR__ . '/utils.php';
 function appt_log_event(int $businessId, int $branchId, int $appointmentId, string $eventType, string $note = '', array $meta = [], string $actorType = 'system', ?int $actorUserId = null): void {
     $pdo = db();
     ensure_multibranch_schema($pdo);
-    $metaJson = '';
+    $metaJson = '{}';
     if ($meta) {
         $metaJson = json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($metaJson === false) $metaJson = '';
+        if ($metaJson === false) $metaJson = '{}';
     }
     $st = $pdo->prepare("INSERT INTO appointment_events (business_id, branch_id, appointment_id, actor_type, actor_user_id, event_type, note, meta_json)
                         VALUES (:bid,:brid,:aid,:at,:au,:et,:n,:m)");

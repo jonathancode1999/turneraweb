@@ -616,6 +616,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       });
     }
     loadTimes();
+    loadCalendarAvailability();
     validateForm();
     if (nextFromPro) nextFromPro.disabled = false;
   }
@@ -698,6 +699,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       selectedTime = timeInput.value || null;
     }
     loadTimes();
+    loadCalendarAvailability();
     validateForm();
     if (nextFromService) nextFromService.disabled = false;
     // Auto-advance to next step for a smoother flow (only on user selection)
@@ -1135,6 +1137,51 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   // Calendar
   const calRoot = document.getElementById('calendar');
   let view = new Date(today.getFullYear(), today.getMonth(), 1);
+  let calendarAvailCacheKey = '';
+  let calendarAvailDays = null;
+  let calendarAvailLoading = false;
+
+  function currentMonthKey(){
+    return `${view.getFullYear()}-${String(view.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  async function loadCalendarAvailability(){
+    if (!serviceInput.value) {
+      calendarAvailCacheKey = '';
+      calendarAvailDays = null;
+      calendarAvailLoading = false;
+      renderCalendar();
+      return;
+    }
+    const reqKey = [currentMonthKey(), serviceInput.value, barberInput.value || '0'].join('|');
+    if (reqKey === calendarAvailCacheKey && calendarAvailDays instanceof Set) return;
+    calendarAvailCacheKey = reqKey;
+    calendarAvailLoading = true;
+    calendarAvailDays = null;
+    renderCalendar();
+    try {
+      const res = await fetch(`api.php?action=days&professional_id=${encodeURIComponent(barberInput.value || '0')}&service_id=${encodeURIComponent(serviceInput.value)}&month=${encodeURIComponent(currentMonthKey())}`);
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'No se pudo cargar disponibilidad del calendario.');
+      const days = Array.isArray(out.days) ? out.days : [];
+      calendarAvailDays = new Set(days.map((x)=> Number(x)).filter((x)=> Number.isInteger(x) && x > 0));
+      if (selectedDate) {
+        const [sy, sm, sd] = selectedDate.split('-').map((x)=> Number(x));
+        if (sy === view.getFullYear() && sm === (view.getMonth()+1) && !calendarAvailDays.has(sd)) {
+          selectedDate = null;
+          dateInput.value = '';
+          selectedTime = null;
+          timeInput.value = '';
+          if (nextFromDay) nextFromDay.disabled = true;
+        }
+      }
+    } catch(e) {
+      calendarAvailDays = null;
+    } finally {
+      calendarAvailLoading = false;
+      renderCalendar();
+    }
+  }
 
   function renderCalendar(){
     const month = view.getMonth();
@@ -1176,13 +1223,16 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       const d = new Date(year, month, day);
       const ymd = toYMD(d);
       const isPast = d < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const serviceSelected = !!serviceInput.value;
+      const isUnavailableByCalendar = serviceSelected && (calendarAvailDays instanceof Set) && !calendarAvailDays.has(day);
+      const isDisabled = isPast || isUnavailableByCalendar || (serviceSelected && calendarAvailLoading);
       const el=document.createElement('div');
-      el.className='cal-day' + (isPast ? ' disabled' : '');
+      el.className='cal-day' + (isDisabled ? ' disabled' : '');
       el.textContent=String(day);
       el.dataset.ymd=ymd;
       if(selectedDate===ymd) el.classList.add('selected');
       el.addEventListener('click', ()=>{
-        if(isPast) return;
+        if(isDisabled) return;
         selectedDate = ymd;
         dateInput.value = ymd;
         // clear time
@@ -1207,14 +1257,17 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       if(prev < minMonth) return;
       view = prev;
       renderCalendar();
+      loadCalendarAvailability();
     });
     nextBtn.addEventListener('click', ()=>{
       view = new Date(year, month+1, 1);
       renderCalendar();
+      loadCalendarAvailability();
     });
   }
 
   renderCalendar();
+  loadCalendarAvailability();
 
   // Init step based on restored state
   (function initStep(){
