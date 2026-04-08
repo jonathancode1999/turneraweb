@@ -21,17 +21,24 @@ $notice='';$error='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     csrf_validate_or_die();
     try {
+        $stmtUp = $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed)
+                                 VALUES (:bid, :brid, :w, :o, :c, :cl)
+                                 ON DUPLICATE KEY UPDATE open_time=VALUES(open_time), close_time=VALUES(close_time), is_closed=VALUES(is_closed)');
         for ($w=0;$w<=6;$w++) {
             $closed = isset($_POST['closed'][$w]) ? 1 : 0;
             $open = trim($_POST['open'][$w]??'');
             $close = trim($_POST['close'][$w]??'');
             if (!$closed) {
                 if (!$open || !$close) throw new RuntimeException('Faltan horarios para ' . $days[$w]);
+                if (!preg_match('/^\d{2}:\d{2}$/', $open) || !preg_match('/^\d{2}:\d{2}$/', $close)) {
+                    throw new RuntimeException('Formato de horario inválido para ' . $days[$w]);
+                }
+                $open .= ':00';
+                $close .= ':00';
             } else {
                 $open = null; $close = null;
             }
-            $pdo->prepare('UPDATE business_hours SET open_time=:o, close_time=:c, is_closed=:cl WHERE business_id=:bid AND weekday=:w')
-                ->execute([':o'=>$open,':c'=>$close,':cl'=>$closed,':bid'=>$bid,':w'=>$w]);
+            $stmtUp->execute([':o'=>$open,':c'=>$close,':cl'=>$closed,':bid'=>$bid,':brid'=>$branchId,':w'=>$w]);
         }
         $notice='Horarios guardados.';
     } catch (Throwable $e) {
@@ -42,7 +49,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $stmt=$pdo->prepare('SELECT * FROM business_hours WHERE business_id=:bid AND branch_id=:brid');
 $stmt->execute([':bid' => $bid, ':brid' => $branchId]);
 $rows=$stmt->fetchAll()?:[];
-$byW=[];foreach($rows as $r){$byW[(int)$r['weekday']]=$r;}
+$byW=[];foreach($rows as $r){
+    if (!empty($r['open_time'])) $r['open_time'] = substr((string)$r['open_time'], 0, 5);
+    if (!empty($r['close_time'])) $r['close_time'] = substr((string)$r['close_time'], 0, 5);
+    $byW[(int)$r['weekday']]=$r;
+}
 
 page_head('Horarios','admin');
 admin_nav('hours');

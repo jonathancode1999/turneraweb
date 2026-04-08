@@ -254,6 +254,10 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 
   <div class="card">
     <h1>Reservá tu turno</h1>
+    <div id="bookingLoadState" class="muted small" style="display:none;margin:-4px 0 10px 0;align-items:center;gap:8px;">
+      <span style="width:14px;height:14px;border:2px solid #d1d5db;border-top-color:#2563eb;border-radius:50%;display:inline-block;animation:spin .9s linear infinite"></span>
+      <span id="bookingLoadStateText">Cargando información…</span>
+    </div>
 
     <div class="stepper" id="stepper">
       <div class="step is-active" data-step="1"><div class="dot">1</div><div class="lbl">Servicio</div></div>
@@ -500,6 +504,8 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const paySpinner = document.getElementById('paySpinner');
   const paySpinnerText = document.getElementById('paySpinnerText');
   const payInlineMsg = document.getElementById('payInlineMsg');
+  const bookingLoadState = document.getElementById('bookingLoadState');
+  const bookingLoadStateText = document.getElementById('bookingLoadStateText');
   let pendingAttemptToken = '';
   let currentPublicKey = '';
   let currentAmount = 0;
@@ -507,6 +513,14 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   let cardBrickController = null;
   let selectedPaymentOption = 'card';
   let whatsappReservationBusy = false;
+  let bookingLoadOps = 0;
+
+  function setBookingLoading(on, text){
+    bookingLoadOps = Math.max(0, bookingLoadOps + (on ? 1 : -1));
+    if (!bookingLoadState) return;
+    if (on && text && bookingLoadStateText) bookingLoadStateText.textContent = text;
+    bookingLoadState.style.display = bookingLoadOps > 0 ? 'flex' : 'none';
+  }
 
   let currentStep = 1;
   function setStep(n){
@@ -737,6 +751,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     }
 
     try{
+      setBookingLoading(true, 'Cargando horarios disponibles…');
       const res = await fetch(`api.php?action=times&professional_id=${encodeURIComponent(bid)}&service_id=${encodeURIComponent(sid)}&date=${encodeURIComponent(d)}`);
       const data = await res.json();
       if(!data.ok){
@@ -782,6 +797,8 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       }
     } catch(e){
       timesHelp.textContent = 'Error al cargar horarios.';
+    } finally {
+      setBookingLoading(false);
     }
   }
 
@@ -1156,6 +1173,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     calendarAvailDays = null;
     renderCalendar();
     try {
+      setBookingLoading(true, 'Cargando días disponibles…');
       const res = await fetch(`api.php?action=days&professional_id=${encodeURIComponent(barberInput.value || '0')}&service_id=${encodeURIComponent(serviceInput.value)}&month=${encodeURIComponent(currentMonthKey())}`);
       const out = await res.json();
       if (!out.ok) throw new Error(out.error || 'No se pudo cargar disponibilidad del calendario.');
@@ -1174,6 +1192,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     } catch(e) {
       calendarAvailDays = null;
     } finally {
+      setBookingLoading(false);
       calendarAvailLoading = false;
       renderCalendar();
     }
