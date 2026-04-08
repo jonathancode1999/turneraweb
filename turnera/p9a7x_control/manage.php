@@ -242,9 +242,17 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       $branch=intval($_POST['branch_id']??1);
       $pdo->prepare("DELETE FROM business_hours WHERE business_id=:bid AND branch_id=:b")->execute([':bid'=>$bid, ':b'=>$branch]);
       for($wd=0;$wd<=6;$wd++){
-        $closed = isset($_POST['closed'][$wd]) ? 1 : 0;
+        $isOpen = isset($_POST['is_open'][$wd]) ? 1 : 0;
+        $closed = $isOpen ? 0 : 1;
         $open = trim($_POST['open'][$wd] ?? '');
         $close = trim($_POST['close'][$wd] ?? '');
+        if ($isOpen) {
+          if ($open === '') $open = '09:00';
+          if ($close === '') $close = '20:00';
+        } else {
+          $open = '';
+          $close = '';
+        }
         $pdo->prepare("INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed) VALUES (:bid,:b,:w,:o,:c,:cl)")
             ->execute([':bid'=>$bid, ':b'=>$branch,':w'=>$wd,':o'=>$open,':c'=>$close,':cl'=>$closed]);
       }
@@ -601,7 +609,7 @@ $days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     <input type="hidden" name="action" value="save_hours">
     <input type="hidden" name="branch_id" value="<?=h($branchId)?>">
     <table>
-      <thead><tr><th>Día</th><th>Abre</th><th>Cierra</th><th>Cerrado</th></tr></thead>
+      <thead><tr><th>Día</th><th>Abre</th><th>Cierra</th><th>Abierto</th></tr></thead>
       <tbody>
       <?php for($wd=0;$wd<=6;$wd++):
         $r=$map[$wd] ?? ['open_time'=>'09:00','close_time'=>'19:00','is_closed'=>($wd===0?1:0)];
@@ -611,7 +619,7 @@ $days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
           <td><input name="open[<?=h($wd)?>]" value="<?=h($r['open_time']??'')?>"></td>
           <td><input name="close[<?=h($wd)?>]" value="<?=h($r['close_time']??'')?>"></td>
           <td style="text-align:center">
-            <input type="checkbox" name="closed[<?=h($wd)?>]" <?= ((int)($r['is_closed']??0)===1?'checked':'') ?>>
+            <input type="checkbox" name="is_open[<?=h($wd)?>]" <?= ((int)($r['is_closed']??0)===0?'checked':'') ?>>
           </td>
         </tr>
       <?php endfor; ?>
@@ -620,6 +628,19 @@ $days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     <div style="margin-top:12px"><button class="btn btn-primary">Guardar</button></div>
   </form>
 </div>
+<script>
+document.querySelectorAll('input[type="checkbox"][name^="is_open["]').forEach((cb)=>{
+  cb.addEventListener('change', ()=>{
+    if (!cb.checked) return;
+    const row = cb.closest('tr');
+    if (!row) return;
+    const open = row.querySelector('input[name^="open["]');
+    const close = row.querySelector('input[name^="close["]');
+    if (open && !String(open.value || '').trim()) open.value = '09:00';
+    if (close && !String(close.value || '').trim()) close.value = '20:00';
+  });
+});
+</script>
 <?php endif; ?>
 
 <?php if($tab==='users'):

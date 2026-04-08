@@ -32,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $open = trim($_POST['open'][$w]??'');
             $close = trim($_POST['close'][$w]??'');
             if ($isOpen) {
-                if (!$open || !$close) throw new RuntimeException('Faltan horarios para ' . $days[$w]);
+                if ($open === '') $open = '09:00';
+                if ($close === '') $close = '20:00';
                 if (!preg_match('/^\d{2}:\d{2}$/', $open) || !preg_match('/^\d{2}:\d{2}$/', $close)) {
                     throw new RuntimeException('Formato de horario inválido para ' . $days[$w]);
                 }
@@ -89,5 +90,19 @@ admin_nav('hours');
 
   <p class="muted small">Tip: si cambiás el slot base o duraciones, los horarios disponibles se recalculan automáticamente.</p>
 </div>
+
+<script>
+document.querySelectorAll('input[type="checkbox"][name^="is_open["]').forEach((cb)=>{
+  cb.addEventListener('change', ()=>{
+    if (!cb.checked) return;
+    const row = cb.closest('tr');
+    if (!row) return;
+    const open = row.querySelector('input[name^="open["]');
+    const close = row.querySelector('input[name^="close["]');
+    if (open && !String(open.value || '').trim()) open.value = '09:00';
+    if (close && !String(close.value || '').trim()) close.value = '20:00';
+  });
+});
+</script>
 
 <?php page_foot(); ?>
