@@ -249,12 +249,38 @@ if (!$a) {
 $now = now_tz();
 $start = parse_db_datetime((string)$a['start_at']);
 $end = parse_db_datetime((string)$a['end_at']);
+$paymentExpiresAtRaw = trim((string)($a['payment_expires_at'] ?? ''));
+// Self-heal: if a pending-payment booking was marked expired prematurely but the
+// payment window is still open, restore it so the user can pay.
+if ((string)($a['status'] ?? '') === 'VENCIDO'
+    && in_array((string)($a['payment_status'] ?? ''), ['expired', 'pending'], true)
+    && $paymentExpiresAtRaw !== ''
+) {
+    try {
+        $paymentExp = parse_db_datetime($paymentExpiresAtRaw);
+        if ($paymentExp > $now) {
+            $pdo->prepare("UPDATE appointments
+                           SET status='PENDIENTE_PAGO', payment_status='pending', updated_at=CURRENT_TIMESTAMP
+                           WHERE business_id=:bid AND id=:id")
+                ->execute([':bid'=>$bid, ':id'=>(int)$a['id']]);
+            $a['status'] = 'PENDIENTE_PAGO';
+            $a['payment_status'] = 'pending';
+        }
+    } catch (Throwable $e) {
+        // Non-fatal; keep current status if expiration value is malformed.
+    }
+}
 $durationMin = (int)round(($end->getTimestamp() - $start->getTimestamp()) / 60);
 if ($durationMin < 0) $durationMin = 0;
 $requestedStart = (!empty($a['requested_start_at'])) ? parse_db_datetime((string)$a['requested_start_at']) : null;
 $status = (string)$a['status'];
 $statusLabel = status_label($status);
 $badge = status_badge_class($status);
+$paymentMode = strtolower(trim((string)($a['payment_mode'] ?? 'none')));
+$paymentAmountArs = (int)($a['payment_amount_ars'] ?? 0);
+$paymentCta = 'Pagar con MercadoPago';
+if ($paymentMode === 'deposit') $paymentCta = 'Pagar seña';
+if ($paymentMode === 'full') $paymentCta = 'Pagar total';
 
 // Lists for reschedule UI
 $services = $pdo->query("SELECT id, name, description, duration_minutes, price_ars, is_active, image_url FROM services WHERE business_id=" . (int)$bid . " AND is_active=1 ORDER BY id")->fetchAll() ?: [];
@@ -322,10 +348,15 @@ page_head('Gestionar turno', 'public-light');
 
     <?php if ($status === 'PENDIENTE_PAGO'): ?>
       <div class="notice warn" style="margin-top:10px">
-        <b>Pendiente de pago:</b> reservamos tu turno por 15 minutos. Si no pagás, se vence automáticamente.
+        <b>Pendiente de pago:</b>
+        <?php echo h($paymentMode === 'deposit' ? 'para confirmar tu turno tenés que pagar la seña.' : 'para confirmar tu turno tenés que pagar el total.'); ?>
+        <?php if ($paymentAmountArs > 0): ?>
+          <div style="margin-top:6px"><b>Importe a pagar:</b> <?php echo h(fmt_money_ars($paymentAmountArs)); ?></div>
+        <?php endif; ?>
+        <div class="muted small" style="margin-top:6px">Reservamos tu turno por 15 minutos. Si no pagás, se vence automáticamente.</div>
       </div>
       <div style="margin-top:12px">
-        <a class="btn primary" href="pay.php?token=<?php echo urlencode($token); ?>" target="_blank" rel="noopener">Pagar con MercadoPago</a>
+        <a class="btn primary" href="pay.php?token=<?php echo urlencode($token); ?>" target="_blank" rel="noopener"><?php echo h($paymentCta); ?></a>
       </div>
     <?php endif; ?>
 

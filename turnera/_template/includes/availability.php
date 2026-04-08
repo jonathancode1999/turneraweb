@@ -105,16 +105,18 @@ function day_appointments_busy(int $businessId, DateTimeImmutable $day, int $bra
     $pdo = db();
     $start = $day->setTime(0,0);
     $end = $day->setTime(23,59,59);
+    $nowLocal = app_now_local_sql();
 
     // Busy: pending approval / accepted / reschedule pending / occupied / completed
     $sql = "SELECT id, start_at, end_at, status FROM appointments
         WHERE business_id=:bid AND branch_id=:brid
           AND professional_id=:bar
           AND (status IN ('PENDIENTE_APROBACION','ACEPTADO','REPROGRAMACION_PENDIENTE','OCUPADO','COMPLETADO')
-           OR (status='PENDIENTE_PAGO' AND payment_status='pending' AND (payment_expires_at IS NULL OR payment_expires_at > NOW())))
+           OR (status='PENDIENTE_PAGO' AND payment_status='pending' AND (payment_expires_at IS NULL OR payment_expires_at > :now_local)))
           AND NOT (end_at <= :s OR start_at >= :e)";
     $params = [':bid' => $businessId, ':brid' => $branchId,
         ':bar' => $barberId,
+        ':now_local' => $nowLocal,
         ':s' => $start->format('Y-m-d H:i:s'),
         ':e' => $end->format('Y-m-d H:i:s'),
     ];

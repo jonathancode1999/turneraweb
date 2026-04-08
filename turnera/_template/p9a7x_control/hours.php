@@ -21,20 +21,33 @@ $notice='';$error='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     csrf_validate_or_die();
     try {
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM business_hours WHERE business_id=:bid AND branch_id=:brid')
+            ->execute([':bid' => $bid, ':brid' => $branchId]);
+        $stmtUp = $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed)
+                                 VALUES (:bid, :brid, :w, :o, :c, :cl)');
         for ($w=0;$w<=6;$w++) {
-            $closed = isset($_POST['closed'][$w]) ? 1 : 0;
+            $isOpen = isset($_POST['is_open'][$w]) ? 1 : 0;
+            $closed = $isOpen ? 0 : 1;
             $open = trim($_POST['open'][$w]??'');
             $close = trim($_POST['close'][$w]??'');
-            if (!$closed) {
-                if (!$open || !$close) throw new RuntimeException('Faltan horarios para ' . $days[$w]);
+            if ($isOpen) {
+                if ($open === '') $open = '09:00';
+                if ($close === '') $close = '20:00';
+                if (!preg_match('/^\d{2}:\d{2}$/', $open) || !preg_match('/^\d{2}:\d{2}$/', $close)) {
+                    throw new RuntimeException('Formato de horario inválido para ' . $days[$w]);
+                }
+                $open .= ':00';
+                $close .= ':00';
             } else {
                 $open = null; $close = null;
             }
-            $pdo->prepare('UPDATE business_hours SET open_time=:o, close_time=:c, is_closed=:cl WHERE business_id=:bid AND weekday=:w')
-                ->execute([':o'=>$open,':c'=>$close,':cl'=>$closed,':bid'=>$bid,':w'=>$w]);
+            $stmtUp->execute([':o'=>$open,':c'=>$close,':cl'=>$closed,':bid'=>$bid,':brid'=>$branchId,':w'=>$w]);
         }
+        $pdo->commit();
         $notice='Horarios guardados.';
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         $error=$e->getMessage();
     }
 }
@@ -42,7 +55,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $stmt=$pdo->prepare('SELECT * FROM business_hours WHERE business_id=:bid AND branch_id=:brid');
 $stmt->execute([':bid' => $bid, ':brid' => $branchId]);
 $rows=$stmt->fetchAll()?:[];
-$byW=[];foreach($rows as $r){$byW[(int)$r['weekday']]=$r;}
+$byW=[];foreach($rows as $r){
+    if (!empty($r['open_time'])) $r['open_time'] = substr((string)$r['open_time'], 0, 5);
+    if (!empty($r['close_time'])) $r['close_time'] = substr((string)$r['close_time'], 0, 5);
+    $byW[(int)$r['weekday']]=$r;
+}
 
 page_head('Horarios','admin');
 admin_nav('hours');
@@ -56,12 +73,12 @@ admin_nav('hours');
   <form method="post">
     <input type="hidden" name="csrf" value="<?php echo h(csrf_token()); ?>">
     <table class="table hours-table">
-      <thead><tr><th>Día</th><th>Cerrado</th><th>Abre</th><th>Cierra</th></tr></thead>
+      <thead><tr><th>Día</th><th>Abierto</th><th>Abre</th><th>Cierra</th></tr></thead>
       <tbody>
         <?php for ($w=0;$w<=6;$w++): $r=$byW[$w]??['is_closed'=>1,'open_time'=>'','close_time'=>'']; ?>
           <tr>
             <td><?php echo h($days[$w]); ?></td>
-            <td><input type="checkbox" name="closed[<?php echo $w; ?>]" <?php echo ((int)$r['is_closed']===1)?'checked':''; ?>></td>
+            <td><input type="checkbox" name="is_open[<?php echo $w; ?>]" <?php echo ((int)$r['is_closed']===0)?'checked':''; ?>></td>
             <td><input type="time" name="open[<?php echo $w; ?>]" value="<?php echo h($r['open_time']??''); ?>"></td>
             <td><input type="time" name="close[<?php echo $w; ?>]" value="<?php echo h($r['close_time']??''); ?>"></td>
           </tr>
@@ -73,5 +90,19 @@ admin_nav('hours');
 
   <p class="muted small">Tip: si cambiás el slot base o duraciones, los horarios disponibles se recalculan automáticamente.</p>
 </div>
+
+<script>
+document.querySelectorAll('input[type="checkbox"][name^="is_open["]').forEach((cb)=>{
+  cb.addEventListener('change', ()=>{
+    if (!cb.checked) return;
+    const row = cb.closest('tr');
+    if (!row) return;
+    const open = row.querySelector('input[name^="open["]');
+    const close = row.querySelector('input[name^="close["]');
+    if (open && !String(open.value || '').trim()) open.value = '09:00';
+    if (close && !String(close.value || '').trim()) close.value = '20:00';
+  });
+});
+</script>
 
 <?php page_foot(); ?>

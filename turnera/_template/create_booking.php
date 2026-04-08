@@ -4,12 +4,25 @@ require_once __DIR__ . '/includes/service_profesionales.php';
 require_once __DIR__ . '/includes/utils.php';
 require_once __DIR__ . '/includes/branches.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/mercadopago.php';
 require_once __DIR__ . '/includes/notifications.php';
 require_once __DIR__ . '/includes/timeline.php';
 require_once __DIR__ . '/includes/anti_spam.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
+$bizFlow = get_business($bid);
+$requiresPaymentFlow = in_array(strtoupper(trim((string)($bizFlow['payment_mode'] ?? 'OFF'))), ['DEPOSIT','FULL'], true);
+$accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+$isAjax = (isset($_POST['ajax']) && (string)$_POST['ajax'] === '1')
+    || strpos($accept, 'application/json') !== false;
+
+function booking_json_response(array $payload, int $status = 200): void {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     redirect('index.php');
@@ -19,8 +32,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 try {
     spam_throttle_ip('booking', 30, 300);
     spam_honeypot_check('website');
-    spam_captcha_require_post('captcha_answer');
+    if (!$requiresPaymentFlow) {
+        spam_captcha_require_post('captcha_answer');
+    }
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     // UX: return to the booking form with a friendly inline error (no white screen).
     flash_set('booking_error', $e->getMessage());
     // Keep user-entered fields so they don't have to type again.
@@ -70,6 +88,9 @@ $phone = trim($_POST['customer_phone'] ?? '');
 try {
     spam_cooldown_phone('booking', $phone, 3, 120);
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     // Same UX as captcha: keep the user on the form.
     flash_set('booking_error', $e->getMessage());
     flash_set('booking_old', json_encode([
@@ -89,6 +110,9 @@ $email = trim($_POST['customer_email'] ?? '');
 $notes = trim($_POST['notes'] ?? '');
 
 if ($serviceId <= 0 || !$date || !$time || $name === '' || $phone === '') {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => 'Datos incompletos.'], 400);
+    }
     http_response_code(400);
     echo "Datos incompletos. <a href='index.php'>Volver</a>";
     exit;
@@ -142,6 +166,8 @@ try {
             throw new RuntimeException('No se pudo iniciar la transacción');
         }
     }
+    $redirectUrl = 'manage.php?token=' . urlencode($token);
+    $needsPayment = false;
     try {
         $business = get_business($bid);
         $paymentModeBiz = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
@@ -151,11 +177,8 @@ try {
         $paymentStatus = 'none';
         $paymentMode = 'none';
         $paymentAmount = 0;
-        $paymentExpiresAt = null;
 
         if ($needsPayment) {
-            $status = 'PENDIENTE_PAGO';
-            $paymentStatus = 'pending';
             $paymentMode = ($paymentModeBiz === 'FULL') ? 'full' : 'deposit';
 
             $price = (int)($service['price_ars'] ?? 0);
@@ -170,39 +193,75 @@ try {
                 $pct = max(0, min(100, $pct));
                 $paymentAmount = (int)round($price * ($pct / 100.0));
             }
-            // 15 minutes hold
-            $expires = now_tz()->modify('+15 minutes');
-            $paymentExpiresAt = $expires->format('Y-m-d H:i:s');
         }
 
-        $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
-                               VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
-        $stmt->execute(array(
-            ':bid' => $bid,
-            ':brid' => $branchId,
-            ':bar' => $barberId,
-            ':sid' => $serviceId,
-            ':n' => $name,
-            ':ph' => $phone,
-            ':em' => $email,
-            ':notes' => $notes,
-            ':s' => $start->format('Y-m-d H:i:s'),
-            ':e' => $end->format('Y-m-d H:i:s'),
-            ':st' => $status,
-            ':t' => $token,
-            ':price' => (int)($service['price_ars'] ?? 0),
-            ':pstat' => $paymentStatus,
-            ':pmode' => $paymentMode,
-            ':pamt' => $paymentAmount,
-            ':pexp' => $paymentExpiresAt,
-        ));
+        if ($needsPayment) {
+            $stmt = $pdo->prepare('INSERT INTO payment_attempts (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, payment_mode, payment_amount_ars, token, status)
+                                   VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :pmode, :pamt, :t, :st)');
+            $stmt->execute([
+                ':bid' => $bid,
+                ':brid' => $branchId,
+                ':bar' => $barberId,
+                ':sid' => $serviceId,
+                ':n' => $name,
+                ':ph' => $phone,
+                ':em' => $email,
+                ':notes' => $notes,
+                ':s' => $start->format('Y-m-d H:i:s'),
+                ':e' => $end->format('Y-m-d H:i:s'),
+                ':pmode' => $paymentMode,
+                ':pamt' => $paymentAmount,
+                ':t' => $token,
+                ':st' => 'pending',
+            ]);
 
-        $apptId = (int)$pdo->lastInsertId();
-        if ($apptId > 0) {
-            appt_log_event($bid, $branchId, $apptId, 'created', 'Turno creado por el cliente', [
-                'status' => 'PENDIENTE_APROBACION',
-                'start_at' => $start->format('Y-m-d H:i:s'),
-            ], 'customer');
+            $attemptId = (int)$pdo->lastInsertId();
+            $branchForMp = is_array($branch) ? $branch : [];
+            $pref = mp_create_preference($pdo, $bid, [
+                'id' => $attemptId,
+                'token' => $token,
+                'payment_amount_ars' => $paymentAmount,
+            ], $service, $branchForMp);
+            $prefId = (string)($pref['id'] ?? '');
+            $initPoint = (string)($pref['init_point'] ?? '');
+            if ($prefId !== '') {
+                $pdo->prepare("UPDATE payment_attempts SET mp_preference_id=:pid WHERE business_id=:bid AND id=:id")
+                    ->execute([':pid' => $prefId, ':bid' => $bid, ':id' => $attemptId]);
+            }
+            if ($initPoint === '') {
+                throw new RuntimeException('No se pudo iniciar el pago en MercadoPago.');
+            }
+            $redirectUrl = $initPoint;
+        } else {
+            $stmt = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at)
+                                   VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp)');
+            $stmt->execute(array(
+                ':bid' => $bid,
+                ':brid' => $branchId,
+                ':bar' => $barberId,
+                ':sid' => $serviceId,
+                ':n' => $name,
+                ':ph' => $phone,
+                ':em' => $email,
+                ':notes' => $notes,
+                ':s' => $start->format('Y-m-d H:i:s'),
+                ':e' => $end->format('Y-m-d H:i:s'),
+                ':st' => $status,
+                ':t' => $token,
+                ':price' => (int)($service['price_ars'] ?? 0),
+                ':pstat' => $paymentStatus,
+                ':pmode' => $paymentMode,
+                ':pamt' => $paymentAmount,
+                ':pexp' => null,
+            ));
+
+            $apptId = (int)$pdo->lastInsertId();
+            if ($apptId > 0) {
+                appt_log_event($bid, $branchId, $apptId, 'created', 'Turno creado por el cliente', [
+                    'status' => 'PENDIENTE_APROBACION',
+                    'start_at' => $start->format('Y-m-d H:i:s'),
+                ], 'customer');
+            }
         }
         if (!empty($startedTx) && $pdo->inTransaction()) {
             $pdo->commit();
@@ -214,33 +273,51 @@ try {
         throw $e;
     }
 
-    // Email notifications (optional, if SMTP is configured)
-    try {
-        $business = get_business($bid);
-        $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
-            FROM appointments a
-            JOIN services s ON s.id=a.service_id
-            JOIN profesionales br ON br.id=a.professional_id
-            WHERE a.business_id=:bid AND a.token=:t');
-        $stmtN->execute(array(':bid' => $bid, ':t' => $token));
-        $full = $stmtN->fetch();
-        if ($full) {
-            $br = branch_get($branchId);
-            $extra = [];
-            if ($br) $extra['branch_name'] = (string)($br['name'] ?? '');
-            notify_event('booking_pending', $business, $full, $extra);
+    if (!$needsPayment) {
+        // Email notifications (optional, if SMTP is configured)
+        try {
+            $business = get_business($bid);
+            $stmtN = $pdo->prepare('SELECT a.*, s.name AS service_name, br.name AS barber_name
+                FROM appointments a
+                JOIN services s ON s.id=a.service_id
+                JOIN profesionales br ON br.id=a.professional_id
+                WHERE a.business_id=:bid AND a.token=:t');
+            $stmtN->execute(array(':bid' => $bid, ':t' => $token));
+            $full = $stmtN->fetch();
+            if ($full) {
+                $br = branch_get($branchId);
+                $extra = [];
+                if ($br) $extra['branch_name'] = (string)($br['name'] ?? '');
+                notify_event('booking_pending', $business, $full, $extra);
+            }
+        } catch (Throwable $e) {
+            // Non-fatal
         }
-    } catch (Throwable $e) {
-        // Non-fatal
     }
-
-    if ($needsPayment) {
-    redirect('pay.php?token=' . urlencode($token));
-} else {
-    redirect('manage.php?token=' . urlencode($token));
-}
+    if ($isAjax) {
+        if ($needsPayment) {
+            $mpCfg = mp_cfg();
+            booking_json_response([
+                'ok' => true,
+                'requires_payment' => true,
+                'token' => $token,
+                'init_point' => $redirectUrl,
+                'public_key' => (string)($mpCfg['public_key'] ?? ''),
+                'amount' => (int)$paymentAmount,
+            ]);
+        }
+        booking_json_response([
+            'ok' => true,
+            'requires_payment' => false,
+            'manage_url' => $redirectUrl,
+        ]);
+    }
+    redirect($redirectUrl);
 
 } catch (Throwable $e) {
+    if ($isAjax) {
+        booking_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+    }
     http_response_code(400);
     echo "Error: " . h($e->getMessage()) . "<br><a href='index.php'>Volver</a>";
 }
