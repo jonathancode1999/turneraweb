@@ -34,6 +34,11 @@ $branches = branches_all_active();
 $publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
 $publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
 $publicSubmitText = 'Solicitar turno';
+$publicWhatsappDigits = preg_replace('/\D+/', '', (string)($branch['whatsapp_phone'] ?? ''));
+if ($publicWhatsappDigits === '') {
+  $publicWhatsappDigits = preg_replace('/\D+/', '', (string)($business['whatsapp_phone'] ?? ''));
+}
+$publicHasWhatsapp = ($publicWhatsappDigits !== '');
 
 // Map embed helper
 $mapEmbed = '';
@@ -285,6 +290,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <div class="service-card" role="button" tabindex="0"
                data-id="<?php echo (int)$s['id']; ?>"
                data-duration="<?php echo (int)$s['duration_minutes']; ?>"
+               data-price="<?php echo (int)$price; ?>"
                data-name="<?php echo h($s['name']); ?>">
             <div class="service-meta">
               <div class="service-title"><?php echo h($s['name']); ?></div>
@@ -419,7 +425,9 @@ page_head('Reservar turno', 'public-light', $headerHtml);
             <b>Pago con tarjeta</b>
             <div id="payAmountText" style="margin-top:6px;font-size:24px;font-weight:800;color:#111"></div>
             <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn" id="payOptTransfer">Reservar por WhatsApp</button>
+              <?php if ($publicHasWhatsapp): ?>
+                <button type="button" class="btn" id="payOptTransfer">Reservar por WhatsApp</button>
+              <?php endif; ?>
               <button type="button" class="btn" id="payOptCard">Tarjeta</button>
             </div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
@@ -465,6 +473,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
 <script>
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
 const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?>;
+const HAS_WHATSAPP_RESERVATION = <?php echo $publicHasWhatsapp ? 'true' : 'false'; ?>;
 (function(){
   const serviceInput = document.getElementById('service_id');
   const barberInput = document.getElementById('professional_id');
@@ -902,12 +911,35 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   }
 
   async function reserveByWhatsapp(){
+    if (!HAS_WHATSAPP_RESERVATION) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Este local no tiene WhatsApp configurado.';
+      return;
+    }
     if (whatsappReservationBusy) return;
     whatsappReservationBusy = true;
     if (!pendingAttemptToken) {
       await initPaymentAttempt();
     }
     if (!pendingAttemptToken) {
+      whatsappReservationBusy = false;
+      return;
+    }
+    const nmInput = document.querySelector('input[name="customer_name"]');
+    const emInput = document.querySelector('input[name="customer_email"]');
+    const nameTxt = (nmInput && nmInput.value) ? nmInput.value.trim() : '';
+    const emailTxt = (emInput && emInput.value) ? emInput.value.trim() : '';
+    const serviceName = selectedService ? String(selectedService.dataset.name || 'Servicio') : 'Servicio';
+    const serviceTotal = selectedService ? Number(selectedService.dataset.price || 0) : 0;
+    const reserveAmount = Math.round(currentAmount || 0);
+    const procedureMsg =
+      'Se va a abrir WhatsApp con un resumen del pedido:\n' +
+      `• Cliente: ${nameTxt || '-'}\n` +
+      `• Email: ${emailTxt || '-'}\n` +
+      `• Servicio: ${serviceName}\n` +
+      `• Total: $${(serviceTotal || 0).toLocaleString('es-AR')}\n` +
+      `• Reserva: $${reserveAmount.toLocaleString('es-AR')}\n\n` +
+      '¿Querés continuar?';
+    if (!window.confirm(procedureMsg)) {
       whatsappReservationBusy = false;
       return;
     }

@@ -88,11 +88,19 @@ try {
         $waPhone = preg_replace('/\D+/', '', $bizPhone);
     }
     $startTxt = $start->format('d/m/Y H:i');
+    $stService = $pdo->prepare("SELECT name, price_ars FROM services WHERE business_id=:bid AND id=:sid LIMIT 1");
+    $stService->execute([':bid' => $bid, ':sid' => (int)$attempt['service_id']]);
+    $srv = $stService->fetch(PDO::FETCH_ASSOC) ?: [];
+    $serviceName = (string)($srv['name'] ?? 'Servicio');
+    $serviceTotal = (int)($srv['price_ars'] ?? 0);
     $amount = (int)($attempt['payment_amount_ars'] ?? 0);
     $msg = "Hola! Quiero reservar por transferencia.\n" .
            "Cliente: " . (string)$attempt['customer_name'] . "\n" .
+           "Email: " . (string)($attempt['customer_email'] ?? '-') . "\n" .
+           "Servicio: {$serviceName}\n" .
            "Fecha: {$startTxt}\n" .
-           "Seña/total: $" . number_format($amount, 0, ',', '.');
+           "Total: $" . number_format($serviceTotal, 0, ',', '.') . "\n" .
+           "Reserva: $" . number_format($amount, 0, ',', '.');
     $waUrl = $waPhone ? ('https://wa.me/' . $waPhone . '?text=' . rawurlencode($msg)) : '';
 
     echo json_encode([
