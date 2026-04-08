@@ -789,7 +789,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       return;
     }
     if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
-    setSpinner(true, '⏳ Preparando intento de pago...');
+    setSpinner(true, 'Preparando intento de pago...');
     try {
       const fd = new FormData(form);
       fd.set('ajax', '1');
@@ -848,7 +848,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     const payerEmailInput = document.querySelector('input[name="customer_email"]');
     const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value : '';
     if (cardFormStatus) cardFormStatus.textContent = 'Completá tu tarjeta para pagar.';
-    setSpinner(true, '⏳ Cargando formulario seguro...');
+    setSpinner(true, 'Cargando formulario seguro...');
 
     const mp = new MercadoPago(currentPublicKey, {locale: 'es-AR'});
     const bricksBuilder = mp.bricks();
@@ -875,7 +875,7 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
             },
             onSubmit: (cardData) => {
               if (cardFormStatus) cardFormStatus.textContent = 'Procesando pago...';
-              setSpinner(true, '⏳ Procesando pago...');
+              setSpinner(true, 'Procesando pago...');
               const payer = cardData && cardData.payer ? cardData.payer : {};
               const identification = payer && payer.identification ? payer.identification : {};
               return sendCardPayment({
@@ -901,7 +901,10 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
               });
             },
             onError: (error) => {
-              if (cardFormStatus) cardFormStatus.textContent = (error && error.message) ? error.message : 'Error con el formulario de tarjeta.';
+              if (cardFormStatus) {
+                const em = (error && error.message) ? String(error.message) : 'Error con el formulario de tarjeta.';
+                cardFormStatus.textContent = em + ' Verificá si estás usando credenciales y tarjeta del mismo entorno (producción vs prueba).';
+              }
               setSpinner(false);
             },
           },
