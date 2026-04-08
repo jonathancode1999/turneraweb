@@ -10,7 +10,7 @@ $pdo = db();
 $bid = (int)app_config()['business_id'];
 
 $pdo->prepare("UPDATE businesses
-               SET mp_connected=0, mp_user_id='', mp_access_token='', mp_refresh_token='', mp_token_expires_at=''
+               SET mp_connected=0, mp_user_id='', mp_access_token='', mp_refresh_token='', mp_token_expires_at=NULL
                WHERE id=:id")
     ->execute([':id'=>$bid]);
 

@@ -31,6 +31,9 @@ if (!$branch) {
 
 $business = $pdo->query('SELECT * FROM businesses WHERE id=' . $bid)->fetch();
 $branches = branches_all_active();
+$publicPaymentMode = strtoupper(trim((string)($business['payment_mode'] ?? 'OFF')));
+$publicRequiresPayment = in_array($publicPaymentMode, ['DEPOSIT','FULL'], true);
+$publicSubmitText = 'Solicitar turno';
 
 // Map embed helper
 $mapEmbed = '';
@@ -348,7 +351,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <div class="row">
         <div style="flex:1;min-width:280px">
           <label>Email (opcional)</label>
-          <input type="email" name="customer_email" maxlength="120" placeholder="Ej: tuemail@dominio.com" value="<?php echo h((string)($bookingOld['customer_email'] ?? '')); ?>">
+          <input type="email" name="customer_email" <?php echo $publicRequiresPayment ? 'required' : ''; ?> maxlength="120" placeholder="Ej: tuemail@dominio.com" value="<?php echo h((string)($bookingOld['customer_email'] ?? '')); ?>">
           <p class="muted small" style="margin:6px 0 0 0">Recomendado: te enviamos un <b>link único</b> para ver el estado del turno (pendiente / aprobado / cancelado) y poder gestionarlo.</p>
         </div>
       </div>
@@ -372,7 +375,12 @@ page_head('Reservar turno', 'public-light', $headerHtml);
       <div class="notice" style="margin:0 0 12px 0">
         <b>Reglas</b>
         <ul class="muted" style="margin:8px 0 0 18px">
-          <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php if ($publicRequiresPayment): ?>
+            <li>En el siguiente paso vas a elegir cómo pagar (tarjeta o QR de MercadoPago).</li>
+            <li>El turno se confirma cuando el pago queda aprobado.</li>
+          <?php else: ?>
+            <li>Tu solicitud queda <b>pendiente de aprobación</b> hasta que el negocio la confirme.</li>
+          <?php endif; ?>
           <?php if ((int)($business['cancel_notice_minutes'] ?? 0) > 0): ?>
             <li>Cancelación con al menos <b><?php echo (int)($business['cancel_notice_minutes'] ?? 0); ?> min</b> de anticipación.</li>
           <?php else: ?>
@@ -382,7 +390,7 @@ page_head('Reservar turno', 'public-light', $headerHtml);
         </ul>
       </div>
 
-      
+      <?php if (!$publicRequiresPayment): ?>
       <input type="text" name="website" value="" autocomplete="off" tabindex="-1" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;opacity:0" aria-hidden="true">
 
       <div class="row">
@@ -393,12 +401,41 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <?php if ($bookingError !== ''): ?><div class="notice danger" style="margin-top:8px"><?php echo h($bookingError); ?></div><?php endif; ?>
         </div>
       </div>
+      <?php endif; ?>
 
       <div class="step-actions">
         <button type="button" class="btn" data-back="5">Atrás</button>
-        <button type="submit" class="btn primary" id="submitBtn" disabled>Solicitar turno</button>
+        <?php if (!$publicRequiresPayment): ?>
+          <button type="submit" class="btn primary" id="submitBtn" disabled><?php echo h($publicSubmitText); ?></button>
+        <?php endif; ?>
       </div>
-      <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php if ($publicRequiresPayment): ?>
+        <div id="paymentInline" style="display:block;margin-top:12px">
+          <div class="notice">
+            <b>Pago con tarjeta</b>
+            <div id="payAmountText" style="margin-top:6px;font-size:24px;font-weight:800;color:#111"></div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn" id="payOptTransfer">Reservar por WhatsApp</button>
+              <button type="button" class="btn" id="payOptCard">Tarjeta</button>
+              <button type="button" class="btn" id="payOptMpApp">Abrir Mercado Pago</button>
+            </div>
+            <div id="cardFormWrap" style="display:none;margin-top:10px">
+              <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
+              <div id="paySpinner" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,.75);align-items:center;justify-content:center;flex-direction:column;gap:12px">
+                <div style="width:42px;height:42px;border:4px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .9s linear infinite"></div>
+                <div class="muted small" id="paySpinnerText">Cargando pago seguro...</div>
+              </div>
+              <div id="cardPaymentBrick_container"></div>
+            </div>
+            <div id="mpAppWrap" style="display:none;margin-top:10px">
+              <a id="mpAppLink" class="btn primary" href="#" target="_blank" rel="noopener">Abrir Mercado Pago</a>
+            </div>
+            <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
+          </div>
+        </div>
+      <?php else: ?>
+        <p class="muted small">Te vamos a avisar cuando sea aceptada o cancelada.</p>
+      <?php endif; ?>
       </div>
     </form>
   </div>
@@ -423,8 +460,11 @@ page_head('Reservar turno', 'public-light', $headerHtml);
     if ($sid > 0) $serviceBarbersMap[$sid] = service_allowed_barber_ids($bid, $branchId, $sid);
   }
 ?>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+<script src="https://sdk.mercadopago.com/js/v2"></script>
 <script>
 const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPED_UNICODE); ?>;
+const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?>;
 (function(){
   const serviceInput = document.getElementById('service_id');
   const barberInput = document.getElementById('professional_id');
@@ -451,6 +491,26 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
   const nextFromTime = document.getElementById('nextFromTime');
   const nextFromData = document.getElementById('nextFromData');
   const confirmSummary = document.getElementById('confirmSummary');
+  const form = document.getElementById('bookingForm');
+  const paymentInline = document.getElementById('paymentInline');
+  const payAmountText = document.getElementById('payAmountText');
+  const payOptTransfer = document.getElementById('payOptTransfer');
+  const payOptCard = document.getElementById('payOptCard');
+  const payOptMpApp = document.getElementById('payOptMpApp');
+  const cardFormWrap = document.getElementById('cardFormWrap');
+  const mpAppWrap = document.getElementById('mpAppWrap');
+  const mpAppLink = document.getElementById('mpAppLink');
+  const cardFormStatus = document.getElementById('cardFormStatus');
+  const paySpinner = document.getElementById('paySpinner');
+  const paySpinnerText = document.getElementById('paySpinnerText');
+  const payInlineMsg = document.getElementById('payInlineMsg');
+  let pendingAttemptToken = '';
+  let currentPublicKey = '';
+  let currentAmount = 0;
+  let currentInitPoint = '';
+  let cardBrickController = null;
+  let selectedPaymentOption = 'card';
+  let whatsappReservationBusy = false;
 
   let currentStep = 1;
   function setStep(n){
@@ -477,6 +537,9 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
           <div style="margin-top:6px"><a class="link" target="_blank" rel="noopener" href="https://wa.me/<?php echo h($waDigits2); ?>">WhatsApp del local</a></div>
         <?php endif; ?>
       `;
+      if (REQUIRES_PAYMENT && !pendingAttemptToken) {
+        initPaymentAttempt();
+      }
     }
   }
 
@@ -663,7 +726,7 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
   }
 
   async function loadTimes(){
-    submit.disabled = true;
+    if (submit) submit.disabled = true;
     timesWrap.innerHTML = '';
     timesHelp.textContent = 'Cargando horarios...';
 
@@ -726,8 +789,223 @@ const SERVICE_BARBERS = <?php echo json_encode($serviceBarbersMap, JSON_UNESCAPE
 
   function validateForm(){
     // professional_id can be "0" (primer profesional disponible)
-    submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
+    if (submit) {
+      submit.disabled = !((barberInput.value !== '') && serviceInput.value && dateInput.value && timeInput.value);
+    }
   }
+
+  async function initPaymentAttempt(){
+    if (!form) return;
+    if (pendingAttemptToken) return;
+    if ((barberInput.value === '') || !serviceInput.value || !dateInput.value || !timeInput.value) return;
+    const payerEmailInput = document.querySelector('input[name="customer_email"]');
+    const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value.trim() : '';
+    if (!payerEmail) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Para pagar con tarjeta completá el email en el paso 5.';
+      return;
+    }
+    if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+    setSpinner(true, 'Preparando intento de pago...');
+    try {
+      const fd = new FormData(form);
+      fd.set('ajax', '1');
+      const res = await fetch('create_booking.php', {
+        method: 'POST',
+        body: fd,
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      pendingAttemptToken = String(data.token || '');
+      currentPublicKey = String(data.public_key || '');
+      currentAmount = Number(data.amount || 0);
+      currentInitPoint = String(data.init_point || '');
+      if (payAmountText) {
+        payAmountText.textContent = 'Resumen: pagás $' + (Math.round(currentAmount) || 0).toLocaleString('es-AR');
+      }
+      if (mpAppLink && currentInitPoint) mpAppLink.href = currentInitPoint;
+      applyPaymentOption(selectedPaymentOption);
+    } catch (err) {
+      if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
+      setSpinner(false);
+    }
+  }
+
+  if (form && REQUIRES_PAYMENT) {
+    form.addEventListener('submit', (e)=>{
+      e.preventDefault();
+    });
+  }
+
+  async function sendCardPayment(payload){
+    const res = await fetch('pay_card.php', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  }
+
+  function setSpinner(on, text){
+    if (!paySpinner) return;
+    paySpinner.style.display = on ? 'flex' : 'none';
+    if (text && paySpinnerText) paySpinnerText.textContent = text;
+  }
+
+  function paintPaymentOptionButtons(option){
+    const btns = [payOptTransfer, payOptCard, payOptMpApp].filter(Boolean);
+    btns.forEach((btn)=>{
+      btn.classList.remove('primary');
+      btn.style.opacity = '.85';
+    });
+    const activeBtn = option === 'transfer' ? payOptTransfer : (option === 'mpapp' ? payOptMpApp : payOptCard);
+    if (activeBtn) {
+      activeBtn.classList.add('primary');
+      activeBtn.style.opacity = '1';
+    }
+  }
+
+  function applyPaymentOption(option){
+    selectedPaymentOption = option;
+    paintPaymentOptionButtons(option);
+    if (cardFormWrap) cardFormWrap.style.display = option === 'card' ? '' : 'none';
+    if (mpAppWrap) mpAppWrap.style.display = option === 'mpapp' ? '' : 'none';
+    if (!pendingAttemptToken) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+      return;
+    }
+    if (option === 'card') {
+      if (payInlineMsg) payInlineMsg.textContent = 'Formulario listo.';
+      mountCardForm();
+      return;
+    }
+    if (option === 'mpapp') {
+      if (payInlineMsg) payInlineMsg.textContent = currentInitPoint ? 'Abrí Mercado Pago para continuar.' : 'No se pudo obtener el enlace de Mercado Pago.';
+      return;
+    }
+    if (payInlineMsg) payInlineMsg.textContent = 'Reservá ahora y coordiná el comprobante por WhatsApp.';
+  }
+
+  async function reserveByWhatsapp(){
+    if (whatsappReservationBusy) return;
+    whatsappReservationBusy = true;
+    if (!pendingAttemptToken) {
+      await initPaymentAttempt();
+    }
+    if (!pendingAttemptToken) {
+      whatsappReservationBusy = false;
+      return;
+    }
+    if (payInlineMsg) payInlineMsg.textContent = 'Creando reserva...';
+    setSpinner(true, 'Creando reserva...');
+    try {
+      const res = await fetch('reserve_whatsapp.php', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+        body: JSON.stringify({ attempt_token: pendingAttemptToken }),
+      });
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'No se pudo crear la reserva.');
+      if (out.wa_url) {
+        window.location.href = out.wa_url;
+        return;
+      }
+      if (out.manage_url) {
+        window.location.href = out.manage_url;
+        return;
+      }
+      throw new Error('No se recibió un destino de continuación.');
+    } catch (err) {
+      if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al reservar por WhatsApp.';
+      setSpinner(false);
+      whatsappReservationBusy = false;
+    }
+  }
+
+  function mountCardForm(){
+    if (!window.MercadoPago) {
+      if (payInlineMsg) payInlineMsg.textContent = 'No cargó el SDK de Mercado Pago.';
+      return;
+    }
+    if (!currentPublicKey || !pendingAttemptToken || currentAmount <= 0) {
+      if (payInlineMsg) payInlineMsg.textContent = 'No se pudo preparar el intento de pago.';
+      return;
+    }
+    if (cardFormWrap) cardFormWrap.style.display = '';
+    const payerEmailInput = document.querySelector('input[name="customer_email"]');
+    const payerEmail = (payerEmailInput && payerEmailInput.value) ? payerEmailInput.value : '';
+    if (cardFormStatus) cardFormStatus.textContent = 'Completá tu tarjeta para pagar.';
+    setSpinner(true, 'Cargando formulario seguro...');
+
+    const mp = new MercadoPago(currentPublicKey, {locale: 'es-AR'});
+    const bricksBuilder = mp.bricks();
+    const container = document.getElementById('cardPaymentBrick_container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    Promise.resolve()
+      .then(async () => {
+        if (cardBrickController && typeof cardBrickController.unmount === 'function') {
+          await cardBrickController.unmount();
+        }
+      })
+      .then(async () => {
+        cardBrickController = await bricksBuilder.create('cardPayment', 'cardPaymentBrick_container', {
+          initialization: {
+            amount: Number(currentAmount),
+            payer: { email: payerEmail || '' },
+          },
+          callbacks: {
+            onReady: () => {
+              if (cardFormStatus) cardFormStatus.textContent = 'Formulario seguro cargado.';
+              setSpinner(false);
+            },
+            onSubmit: (cardData) => {
+              if (cardFormStatus) cardFormStatus.textContent = 'Procesando pago...';
+              setSpinner(true, 'Procesando pago...');
+              const payer = cardData && cardData.payer ? cardData.payer : {};
+              const identification = payer && payer.identification ? payer.identification : {};
+              return sendCardPayment({
+                attempt_token: pendingAttemptToken,
+                card_token: cardData.token || cardData.card_token || '',
+                payment_method_id: cardData.payment_method_id || cardData.paymentMethodId || '',
+                issuer_id: cardData.issuer_id || cardData.issuerId || '',
+                installments: cardData.installments || 1,
+                payer_email: payer.email || '',
+                doc_type: identification.type || '',
+                doc_number: identification.number || '',
+                security_code: cardData.security_code || cardData.securityCode || '',
+                security_code_id: cardData.security_code_id || cardData.securityCodeId || '',
+                card_id: cardData.card_id || cardData.cardId || '',
+              }).then((out) => {
+                if (out.ok && out.status === 'approved' && out.manage_url) {
+                  window.location.href = out.manage_url;
+                  return out;
+                }
+                if (cardFormStatus) cardFormStatus.textContent = out.error || 'No se pudo aprobar el pago.';
+                setSpinner(false);
+                return out;
+              });
+            },
+            onError: (error) => {
+              if (cardFormStatus) {
+                const em = (error && error.message) ? String(error.message) : 'Error con el formulario de tarjeta.';
+                cardFormStatus.textContent = em + ' Verificá si estás usando credenciales y tarjeta del mismo entorno (producción vs prueba).';
+              }
+              setSpinner(false);
+            },
+          },
+        });
+      });
+  }
+
+  if (payOptCard) payOptCard.addEventListener('click', ()=> applyPaymentOption('card'));
+  if (payOptMpApp) payOptMpApp.addEventListener('click', ()=> applyPaymentOption('mpapp'));
+  if (payOptTransfer) payOptTransfer.addEventListener('click', ()=>{
+    applyPaymentOption('transfer');
+    reserveByWhatsapp();
+  });
+  if (REQUIRES_PAYMENT) applyPaymentOption('card');
 
   // Gallery carousel (infinite + autoplay)
   (function initCarousel(){
