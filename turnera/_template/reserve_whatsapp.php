@@ -73,7 +73,9 @@ try {
         ->execute([':bid' => $bid, ':id' => (int)$attempt['id']]);
 
     if ($newApptId > 0) {
-        appt_log_event($bid, (int)$attempt['branch_id'], $newApptId, 'created', 'Reserva creada para coordinar pago por transferencia/WhatsApp', [], 'customer');
+        appt_log_event($bid, (int)$attempt['branch_id'], $newApptId, 'created', 'Reserva creada para coordinar pago por transferencia/WhatsApp', [
+            'channel' => 'whatsapp_transfer',
+        ], 'customer');
     }
     $pdo->commit();
 
@@ -97,4 +99,3 @@ try {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
 }
-

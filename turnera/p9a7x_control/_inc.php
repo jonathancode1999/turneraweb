@@ -138,6 +138,7 @@ function admin_client_runtime_files(): array {
     'includes/layout.php',
     'includes/mercadopago.php',
     'includes/notifications.php',
+    'includes/timeline.php',
     'includes/uploads.php',
     'includes/utils.php',
     'includes/whatsapp.php',
@@ -147,6 +148,7 @@ function admin_client_runtime_files(): array {
     'p9a7x_control/profesionales.php',
     'p9a7x_control/profesional_edit.php',
     'p9a7x_control/settings.php',
+    'p9a7x_control/hours.php',
     'p9a7x_control/mp_connect.php',
     'p9a7x_control/mp_callback.php',
     'p9a7x_control/mp_disconnect.php',
@@ -175,10 +177,12 @@ function admin_client_force_refresh_files(): array {
     'includes/layout.php',
     'includes/mercadopago.php',
     'includes/notifications.php',
+    'includes/timeline.php',
     'includes/uploads.php',
     'includes/utils.php',
     'includes/whatsapp.php',
     'p9a7x_control/login.php',
+    'p9a7x_control/hours.php',
   ];
 }
 
