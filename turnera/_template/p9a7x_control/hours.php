@@ -21,9 +21,11 @@ $notice='';$error='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     csrf_validate_or_die();
     try {
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM business_hours WHERE business_id=:bid AND branch_id=:brid')
+            ->execute([':bid' => $bid, ':brid' => $branchId]);
         $stmtUp = $pdo->prepare('INSERT INTO business_hours (business_id, branch_id, weekday, open_time, close_time, is_closed)
-                                 VALUES (:bid, :brid, :w, :o, :c, :cl)
-                                 ON DUPLICATE KEY UPDATE open_time=VALUES(open_time), close_time=VALUES(close_time), is_closed=VALUES(is_closed)');
+                                 VALUES (:bid, :brid, :w, :o, :c, :cl)');
         for ($w=0;$w<=6;$w++) {
             $closed = isset($_POST['closed'][$w]) ? 1 : 0;
             $open = trim($_POST['open'][$w]??'');
@@ -40,8 +42,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
             $stmtUp->execute([':o'=>$open,':c'=>$close,':cl'=>$closed,':bid'=>$bid,':brid'=>$branchId,':w'=>$w]);
         }
+        $pdo->commit();
         $notice='Horarios guardados.';
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         $error=$e->getMessage();
     }
 }

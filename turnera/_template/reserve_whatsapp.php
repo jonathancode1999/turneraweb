@@ -81,6 +81,12 @@ try {
 
     $branch = branch_get((int)$attempt['branch_id']) ?: [];
     $waPhone = preg_replace('/\D+/', '', (string)($branch['whatsapp_phone'] ?? ''));
+    if ($waPhone === '') {
+        $stBiz = $pdo->prepare("SELECT whatsapp_phone FROM businesses WHERE id=:bid LIMIT 1");
+        $stBiz->execute([':bid' => $bid]);
+        $bizPhone = (string)($stBiz->fetchColumn() ?: '');
+        $waPhone = preg_replace('/\D+/', '', $bizPhone);
+    }
     $startTxt = $start->format('d/m/Y H:i');
     $amount = (int)($attempt['payment_amount_ars'] ?? 0);
     $msg = "Hola! Quiero reservar por transferencia.\n" .
