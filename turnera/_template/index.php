@@ -414,6 +414,11 @@ page_head('Reservar turno', 'public-light', $headerHtml);
           <div class="notice">
             <b>Pago con tarjeta</b>
             <div id="payAmountText" style="margin-top:6px;font-size:24px;font-weight:800;color:#111"></div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn" id="payOptTransfer">Reservar por WhatsApp</button>
+              <button type="button" class="btn" id="payOptCard">Tarjeta</button>
+              <button type="button" class="btn" id="payOptMpApp">Abrir Mercado Pago</button>
+            </div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
               <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
               <div id="paySpinner" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,.75);align-items:center;justify-content:center;flex-direction:column;gap:12px">
@@ -421,6 +426,9 @@ page_head('Reservar turno', 'public-light', $headerHtml);
                 <div class="muted small" id="paySpinnerText">Cargando pago seguro...</div>
               </div>
               <div id="cardPaymentBrick_container"></div>
+            </div>
+            <div id="mpAppWrap" style="display:none;margin-top:10px">
+              <a id="mpAppLink" class="btn primary" href="#" target="_blank" rel="noopener">Abrir Mercado Pago</a>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
           </div>
@@ -486,7 +494,12 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   const form = document.getElementById('bookingForm');
   const paymentInline = document.getElementById('paymentInline');
   const payAmountText = document.getElementById('payAmountText');
+  const payOptTransfer = document.getElementById('payOptTransfer');
+  const payOptCard = document.getElementById('payOptCard');
+  const payOptMpApp = document.getElementById('payOptMpApp');
   const cardFormWrap = document.getElementById('cardFormWrap');
+  const mpAppWrap = document.getElementById('mpAppWrap');
+  const mpAppLink = document.getElementById('mpAppLink');
   const cardFormStatus = document.getElementById('cardFormStatus');
   const paySpinner = document.getElementById('paySpinner');
   const paySpinnerText = document.getElementById('paySpinnerText');
@@ -494,7 +507,10 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
   let pendingAttemptToken = '';
   let currentPublicKey = '';
   let currentAmount = 0;
+  let currentInitPoint = '';
   let cardBrickController = null;
+  let selectedPaymentOption = 'card';
+  let whatsappReservationBusy = false;
 
   let currentStep = 1;
   function setStep(n){
@@ -803,11 +819,12 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
       pendingAttemptToken = String(data.token || '');
       currentPublicKey = String(data.public_key || '');
       currentAmount = Number(data.amount || 0);
+      currentInitPoint = String(data.init_point || '');
       if (payAmountText) {
         payAmountText.textContent = 'Resumen: pagás $' + (Math.round(currentAmount) || 0).toLocaleString('es-AR');
       }
-      if (payInlineMsg) payInlineMsg.textContent = 'Formulario listo.';
-      mountCardForm();
+      if (mpAppLink && currentInitPoint) mpAppLink.href = currentInitPoint;
+      applyPaymentOption(selectedPaymentOption);
     } catch (err) {
       if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al iniciar el pago.';
       setSpinner(false);
@@ -833,6 +850,76 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
     if (!paySpinner) return;
     paySpinner.style.display = on ? 'flex' : 'none';
     if (text && paySpinnerText) paySpinnerText.textContent = text;
+  }
+
+  function paintPaymentOptionButtons(option){
+    const btns = [payOptTransfer, payOptCard, payOptMpApp].filter(Boolean);
+    btns.forEach((btn)=>{
+      btn.classList.remove('primary');
+      btn.style.opacity = '.85';
+    });
+    const activeBtn = option === 'transfer' ? payOptTransfer : (option === 'mpapp' ? payOptMpApp : payOptCard);
+    if (activeBtn) {
+      activeBtn.classList.add('primary');
+      activeBtn.style.opacity = '1';
+    }
+  }
+
+  function applyPaymentOption(option){
+    selectedPaymentOption = option;
+    paintPaymentOptionButtons(option);
+    if (cardFormWrap) cardFormWrap.style.display = option === 'card' ? '' : 'none';
+    if (mpAppWrap) mpAppWrap.style.display = option === 'mpapp' ? '' : 'none';
+    if (!pendingAttemptToken) {
+      if (payInlineMsg) payInlineMsg.textContent = 'Preparando pago...';
+      return;
+    }
+    if (option === 'card') {
+      if (payInlineMsg) payInlineMsg.textContent = 'Formulario listo.';
+      mountCardForm();
+      return;
+    }
+    if (option === 'mpapp') {
+      if (payInlineMsg) payInlineMsg.textContent = currentInitPoint ? 'Abrí Mercado Pago para continuar.' : 'No se pudo obtener el enlace de Mercado Pago.';
+      return;
+    }
+    if (payInlineMsg) payInlineMsg.textContent = 'Reservá ahora y coordiná el comprobante por WhatsApp.';
+  }
+
+  async function reserveByWhatsapp(){
+    if (whatsappReservationBusy) return;
+    whatsappReservationBusy = true;
+    if (!pendingAttemptToken) {
+      await initPaymentAttempt();
+    }
+    if (!pendingAttemptToken) {
+      whatsappReservationBusy = false;
+      return;
+    }
+    if (payInlineMsg) payInlineMsg.textContent = 'Creando reserva...';
+    setSpinner(true, 'Creando reserva...');
+    try {
+      const res = await fetch('reserve_whatsapp.php', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+        body: JSON.stringify({ attempt_token: pendingAttemptToken }),
+      });
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'No se pudo crear la reserva.');
+      if (out.wa_url) {
+        window.location.href = out.wa_url;
+        return;
+      }
+      if (out.manage_url) {
+        window.location.href = out.manage_url;
+        return;
+      }
+      throw new Error('No se recibió un destino de continuación.');
+    } catch (err) {
+      if (payInlineMsg) payInlineMsg.textContent = (err && err.message) ? err.message : 'Error al reservar por WhatsApp.';
+      setSpinner(false);
+      whatsappReservationBusy = false;
+    }
   }
 
   function mountCardForm(){
@@ -911,6 +998,14 @@ const REQUIRES_PAYMENT = <?php echo $publicRequiresPayment ? 'true' : 'false'; ?
         });
       });
   }
+
+  if (payOptCard) payOptCard.addEventListener('click', ()=> applyPaymentOption('card'));
+  if (payOptMpApp) payOptMpApp.addEventListener('click', ()=> applyPaymentOption('mpapp'));
+  if (payOptTransfer) payOptTransfer.addEventListener('click', ()=>{
+    applyPaymentOption('transfer');
+    reserveByWhatsapp();
+  });
+  if (REQUIRES_PAYMENT) applyPaymentOption('card');
 
   // Gallery carousel (infinite + autoplay)
   (function initCarousel(){
