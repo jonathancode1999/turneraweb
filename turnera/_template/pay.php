@@ -16,9 +16,6 @@ if ($token === '') {
     exit;
 }
 
-// Expire any pending payments opportunistically
-expire_pending_payments($pdo);
-
 $stmt = $pdo->prepare("SELECT a.*, s.name AS service_name, s.price_ars, s.deposit_percent_override, br.name AS barber_name
                        FROM appointments a
                        JOIN services s ON s.id=a.service_id
@@ -33,12 +30,35 @@ if (!$a) {
     exit;
 }
 
+// Expire only this appointment if its payment window elapsed.
+// Avoid global expiry updates here (timezone/session drift in DB environments).
+$expiresAtRaw = trim((string)($a['payment_expires_at'] ?? ''));
+if ((string)$a['status'] === 'PENDIENTE_PAGO' && (string)$a['payment_status'] === 'pending' && $expiresAtRaw !== '') {
+    try {
+        $expDt = parse_db_datetime($expiresAtRaw);
+        if ($expDt <= now_tz()) {
+            $pdo->prepare("UPDATE appointments
+                           SET status='VENCIDO', payment_status='expired', updated_at=CURRENT_TIMESTAMP
+                           WHERE business_id=:bid AND id=:id")
+                ->execute([':bid'=>$bid, ':id'=>(int)$a['id']]);
+            redirect('manage.php?token=' . urlencode($token));
+        }
+    } catch (Throwable $e) {
+        // if parsing fails, keep flow and let user continue/retry
+    }
+}
+
 if ((string)$a['status'] !== 'PENDIENTE_PAGO' || (string)$a['payment_status'] !== 'pending') {
     redirect('manage.php?token=' . urlencode($token));
 }
 
 $service = get_service($bid, (int)$a['service_id']);
 $branch = branch_get((int)$a['branch_id']) ?: [];
+$paymentMode = strtolower(trim((string)($a['payment_mode'] ?? 'none')));
+$paymentAmountArs = (int)($a['payment_amount_ars'] ?? 0);
+$paymentActionText = 'Pagar con MercadoPago';
+if ($paymentMode === 'deposit') $paymentActionText = 'Pagar seña';
+if ($paymentMode === 'full') $paymentActionText = 'Pagar total';
 
 $expiresAt = (string)($a['payment_expires_at'] ?? '');
 $leftSeconds = 0;
@@ -89,13 +109,13 @@ try {
 <body>
 <div class="wrap">
   <div class="card">
-    <h2 style="margin:0 0 10px 0;">Confirmá el pago</h2>
+    <h2 style="margin:0 0 10px 0;"><?php echo h($paymentActionText); ?></h2>
     <p class="muted" style="margin-top:0">Este turno se reserva por 15 minutos. Si no pagás a tiempo, se vence.</p>
 
     <div style="margin:12px 0;padding:12px;border-radius:12px;background:#f3f4f6">
       <div><b><?php echo h($service['name'] ?? 'Servicio'); ?></b></div>
       <div><?php echo h($a['customer_name'] ?? ''); ?></div>
-      <div class="muted">Importe: <b>$<?php echo number_format((int)($a['payment_amount_ars'] ?? 0), 0, ',', '.'); ?></b></div>
+      <div class="muted">Importe a pagar: <b>$<?php echo number_format($paymentAmountArs, 0, ',', '.'); ?></b></div>
       <?php if ($expiresAt): ?>
         <div class="muted">Vence: <?php echo h($expiresAt); ?></div>
       <?php endif; ?>
@@ -107,8 +127,13 @@ try {
       <a class="btn" href="manage.php?token=<?php echo urlencode($token); ?>">Volver</a>
     <?php else: ?>
       <?php if ($initPoint): ?>
-        <a class="btn" href="<?php echo h($initPoint); ?>" target="_blank" rel="noopener">Pagar con MercadoPago</a>
+        <a class="btn" href="<?php echo h($initPoint); ?>" target="_blank" rel="noopener"><?php echo h($paymentActionText); ?></a>
         <p class="muted" style="margin-bottom:0;margin-top:10px">Se abre MercadoPago en otra pestaña.</p>
+        <?php $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' . urlencode($initPoint); ?>
+        <div style="margin-top:14px">
+          <div class="muted" style="margin-bottom:8px">O pagá escaneando este QR:</div>
+          <img src="<?php echo h($qrUrl); ?>" alt="QR de pago MercadoPago" width="220" height="220" style="border:1px solid #e5e7eb;border-radius:10px;padding:6px;background:#fff">
+        </div>
       <?php else: ?>
         <p class="danger">No se pudo generar el link de pago.</p>
         <a class="btn" href="manage.php?token=<?php echo urlencode($token); ?>">Volver</a>

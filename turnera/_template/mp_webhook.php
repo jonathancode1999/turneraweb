@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/utils.php';
 require_once __DIR__ . '/includes/mercadopago.php';
 require_once __DIR__ . '/includes/timeline.php';
+require_once __DIR__ . '/includes/availability.php';
 
 $cfg = app_config();
 $bid = (int)$cfg['business_id'];
@@ -56,6 +57,73 @@ try {
                                    SET payment_status=:ps, mp_payment_id=:pid, updated_at=CURRENT_TIMESTAMP
                                    WHERE business_id=:bid AND id=:id")
                         ->execute([':ps'=>$status, ':pid'=>$paymentId, ':bid'=>$bid, ':id'=>(int)$appt['id']]);
+                }
+            }
+        } else {
+            // New flow: payment first (no appointment yet). Confirm payment_attempt and create appointment.
+            $stAtt = $pdo->prepare("SELECT * FROM payment_attempts WHERE business_id=:bid AND token=:t LIMIT 1");
+            $stAtt->execute([':bid' => $bid, ':t' => $ext]);
+            $attempt = $stAtt->fetch(PDO::FETCH_ASSOC);
+            if ($attempt && (string)($attempt['status'] ?? '') === 'pending') {
+                if ($approved) {
+                    $pdo->beginTransaction();
+                    try {
+                        $start = parse_db_datetime((string)$attempt['start_at']);
+                        [$service, $end] = assert_slot_available(
+                            $bid,
+                            (int)$attempt['branch_id'],
+                            (int)$attempt['professional_id'],
+                            (int)$attempt['service_id'],
+                            $start
+                        );
+
+                        $apptStatus = 'ACEPTADO';
+                        $stmtIns = $pdo->prepare('INSERT INTO appointments (business_id, branch_id, professional_id, service_id, customer_name, customer_phone, customer_email, notes, start_at, end_at, status, token, price_snapshot_ars, payment_status, payment_mode, payment_amount_ars, payment_expires_at, mp_preference_id, mp_payment_id, paid_at)
+                                                  VALUES (:bid, :brid, :bar, :sid, :n, :ph, :em, :notes, :s, :e, :st, :t, :price, :pstat, :pmode, :pamt, :pexp, :pref, :pid, CURRENT_TIMESTAMP)');
+                        $stmtIns->execute([
+                            ':bid' => $bid,
+                            ':brid' => (int)$attempt['branch_id'],
+                            ':bar' => (int)$attempt['professional_id'],
+                            ':sid' => (int)$attempt['service_id'],
+                            ':n' => (string)$attempt['customer_name'],
+                            ':ph' => (string)$attempt['customer_phone'],
+                            ':em' => (string)($attempt['customer_email'] ?? ''),
+                            ':notes' => (string)($attempt['notes'] ?? ''),
+                            ':s' => (string)$attempt['start_at'],
+                            ':e' => (string)$end->format('Y-m-d H:i:s'),
+                            ':st' => $apptStatus,
+                            ':t' => (string)$attempt['token'],
+                            ':price' => (int)($service['price_ars'] ?? 0),
+                            ':pstat' => 'paid',
+                            ':pmode' => (string)($attempt['payment_mode'] ?? 'deposit'),
+                            ':pamt' => (int)($attempt['payment_amount_ars'] ?? 0),
+                            ':pexp' => null,
+                            ':pref' => (string)($attempt['mp_preference_id'] ?? ''),
+                            ':pid' => $paymentId,
+                        ]);
+                        $newApptId = (int)$pdo->lastInsertId();
+
+                        $pdo->prepare("UPDATE payment_attempts
+                                       SET status='approved', paid_at=CURRENT_TIMESTAMP
+                                       WHERE business_id=:bid AND id=:id")
+                            ->execute([':bid' => $bid, ':id' => (int)$attempt['id']]);
+
+                        if ($newApptId > 0) {
+                            appt_log_event($bid, (int)$attempt['branch_id'], $newApptId, 'paid', 'Pago recibido (MercadoPago)', [
+                                'mp_payment_id' => $paymentId,
+                            ], 'system');
+                        }
+                        $pdo->commit();
+                    } catch (Throwable $e) {
+                        if ($pdo->inTransaction()) $pdo->rollBack();
+                    }
+                } else if ($status === 'rejected' || $status === 'cancelled') {
+                    $pdo->prepare("UPDATE payment_attempts SET status=:st WHERE business_id=:bid AND id=:id")
+                        ->execute([
+                            ':st' => $status === 'cancelled' ? 'cancelled' : 'rejected',
+                            ':bid' => $bid,
+                            ':id' => (int)$attempt['id'],
+                        ]);
                 }
             }
         }
