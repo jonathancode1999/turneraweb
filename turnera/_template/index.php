@@ -417,7 +417,6 @@ page_head('Reservar turno', 'public-light', $headerHtml);
             <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
               <button type="button" class="btn" id="payOptTransfer">Reservar por WhatsApp</button>
               <button type="button" class="btn" id="payOptCard">Tarjeta</button>
-              <button type="button" class="btn" id="payOptMpApp">Abrir Mercado Pago</button>
             </div>
             <div id="cardFormWrap" style="display:none;margin-top:10px">
               <div id="cardFormStatus" class="muted small" style="margin-bottom:8px"></div>
@@ -426,9 +425,6 @@ page_head('Reservar turno', 'public-light', $headerHtml);
                 <div class="muted small" id="paySpinnerText">Cargando pago seguro...</div>
               </div>
               <div id="cardPaymentBrick_container"></div>
-            </div>
-            <div id="mpAppWrap" style="display:none;margin-top:10px">
-              <a id="mpAppLink" class="btn primary" href="#" target="_blank" rel="noopener">Abrir Mercado Pago</a>
             </div>
             <div id="payInlineMsg" class="muted small" style="margin-top:10px">Estamos preparando el pago seguro...</div>
           </div>
